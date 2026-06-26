@@ -20,7 +20,11 @@ import type {
   Syndicate,
   Intent,
   AttributionMe,
+  ListOfferingsData,
 } from "./generated/types.gen.js";
+
+/** Documented `sort` values for the offerings list, from the generated op. */
+export type OfferingSort = NonNullable<ListOfferingsData["query"]>["sort"];
 
 export const DEFAULT_API_BASE_URL = "https://api.wefunder.com/api/v2";
 export const DEFAULT_API_VERSION = "2025-01-15";
@@ -41,6 +45,11 @@ export interface WefunderOptions extends OAuthHostOptions {
   /** Needed (with the refresh token) to auto-refresh on expiry/401. */
   clientId?: string;
   clientSecret?: string;
+  /**
+   * Marks this as a client_credentials client so the SDK auto-re-mints on expiry/401
+   * (cc tokens have no refresh token). `fromClientCredentials` sets this for you.
+   */
+  clientCredentials?: { scopes?: string[] };
   apiVersion?: string;
   /** Override the API base. The edge proxy routes mode by token prefix — leave default in prod. */
   baseUrl?: string;
@@ -78,10 +87,27 @@ export class Wefunder {
     }
     this.mode = modeForToken(tokenSet.accessToken);
 
+    // For client_credentials clients, build a re-mint closure from the stored grant
+    // inputs so the TokenManager can recover expired tokens (which have no refresh token).
+    const reMint =
+      opts.clientCredentials && opts.clientId && opts.clientSecret
+        ? () =>
+            clientCredentialsGrant({
+              clientId: opts.clientId!,
+              clientSecret: opts.clientSecret!,
+              scopes: opts.clientCredentials!.scopes,
+              oauthBaseUrl: opts.oauthBaseUrl,
+              tokenBaseUrl: opts.tokenBaseUrl,
+              fetch: opts.fetch,
+              now: opts.now,
+            })
+        : undefined;
+
     this.#tokens = new TokenManager({
       tokens: tokenSet,
       clientId: opts.clientId,
       clientSecret: opts.clientSecret,
+      reMint,
       oauthBaseUrl: opts.oauthBaseUrl,
       tokenBaseUrl: opts.tokenBaseUrl,
       onTokenRefresh: opts.onTokenRefresh,
@@ -134,6 +160,7 @@ export class Wefunder {
       tokens,
       clientId: opts.clientId,
       clientSecret: opts.clientSecret,
+      clientCredentials: { scopes: opts.scopes }, // enables auto-re-mint on expiry/401
       oauthBaseUrl: opts.oauthBaseUrl,
       tokenBaseUrl: opts.tokenBaseUrl,
       apiVersion: opts.apiVersion,
@@ -186,10 +213,23 @@ export class Wefunder {
     return raw as RawOps;
   }
 
-  // Generic helpers for the ergonomic namespaces.
-  #page<T>(fn: (o: { client: Client; query?: { cursor?: Cursor } }) => Result<Page<T>>) {
-    return (cursor?: Cursor) =>
-      this.#unwrap(fn({ client: this.#client, query: { cursor } }) as Result<Page<T>>);
+  /**
+   * Unwrap any generated op result (incl. `wf.raw.*`) the way the ergonomic
+   * namespaces do: returns the response body on success, throws a typed
+   * `WefunderError` (with `request_id`) on failure. Lets `raw` callers keep the
+   * SDK's error handling. (Stress-test finding C.)
+   */
+  unwrap<T>(p: Result<T>): Promise<T> {
+    return this.#unwrap(p);
+  }
+
+  // Generic page helper: forwards the endpoint's full query (cursor + documented
+  // params like `sort`), not just the cursor. (Stress-test finding B.)
+  #page<T, Q extends { cursor?: Cursor } = { cursor?: Cursor }>(
+    fn: (o: { client: Client; query?: Q }) => Result<Page<T>>,
+  ) {
+    return (query?: Q): Promise<Page<T>> =>
+      this.#unwrap(fn({ client: this.#client, query }) as Result<Page<T>>);
   }
 
   // ---- resource namespaces (common GA paths) ----
@@ -199,9 +239,11 @@ export class Wefunder {
   };
 
   offerings = {
-    list: this.#page<Offering>(ops.listOfferings as never),
-    all: (): AsyncGenerator<Offering> => paginate(this.offerings.list),
-    collect: (): Promise<Offering[]> => collect(this.offerings.list),
+    list: this.#page<Offering, { cursor?: Cursor; sort?: OfferingSort }>(ops.listOfferings as never),
+    all: (query?: { sort?: OfferingSort }): AsyncGenerator<Offering> =>
+      paginate((cursor) => this.offerings.list({ ...query, cursor })),
+    collect: (query?: { sort?: OfferingSort }): Promise<Offering[]> =>
+      collect((cursor) => this.offerings.list({ ...query, cursor })),
     get: (externalId: string) =>
       this.#unwrapData<Offering>(
         ops.getOffering({ client: this.#client, path: { external_id: externalId } }),
@@ -210,26 +252,26 @@ export class Wefunder {
 
   investments = {
     list: this.#page<Investment>(ops.listInvestments as never),
-    all: (): AsyncGenerator<Investment> => paginate(this.investments.list),
-    collect: (): Promise<Investment[]> => collect(this.investments.list),
+    all: (): AsyncGenerator<Investment> => paginate((cursor) => this.investments.list({ cursor })),
+    collect: (): Promise<Investment[]> => collect((cursor) => this.investments.list({ cursor })),
   };
 
   campaigns = {
     list: this.#page<Campaign>(ops.listCampaigns as never),
-    all: (): AsyncGenerator<Campaign> => paginate(this.campaigns.list),
-    collect: (): Promise<Campaign[]> => collect(this.campaigns.list),
+    all: (): AsyncGenerator<Campaign> => paginate((cursor) => this.campaigns.list({ cursor })),
+    collect: (): Promise<Campaign[]> => collect((cursor) => this.campaigns.list({ cursor })),
   };
 
   syndicates = {
     list: this.#page<Syndicate>(ops.listSyndicates as never),
-    all: (): AsyncGenerator<Syndicate> => paginate(this.syndicates.list),
+    all: (): AsyncGenerator<Syndicate> => paginate((cursor) => this.syndicates.list({ cursor })),
     get: (id: number | string) =>
       this.#unwrapData<Syndicate>(ops.getSyndicate({ client: this.#client, path: { id } as never })),
   };
 
   intents = {
     list: this.#page<Intent>(ops.listIntents as never),
-    all: (): AsyncGenerator<Intent> => paginate(this.intents.list),
+    all: (): AsyncGenerator<Intent> => paginate((cursor) => this.intents.list({ cursor })),
     get: (id: number | string) =>
       this.#unwrapData<Intent>(ops.getIntent({ client: this.#client, path: { id } as never })),
   };

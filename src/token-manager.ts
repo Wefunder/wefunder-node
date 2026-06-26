@@ -1,8 +1,12 @@
-// Holds the live token state and owns refresh-with-rotation + persistence.
-// This is where the CRITICAL rotation invariant is enforced (plan §9): every
-// refresh returns a new refresh token, which we persist BEFORE the next request
-// can use it. Concurrent callers share a single in-flight refresh promise so a
-// burst of 401s doesn't fire N refreshes (which would invalidate each other).
+// Holds the live token state and owns token recovery + persistence. Two recovery
+// strategies, picked automatically:
+//   - refresh_token (user flows): rotates — every refresh returns a NEW refresh
+//     token, persisted BEFORE the next request can use it (the CRITICAL invariant).
+//   - re-mint (client_credentials): cc tokens have NO refresh token, but a client
+//     built via fromClientCredentials holds the grant inputs, so it can mint a fresh
+//     token on expiry/401 instead of throwing. (Stress-test finding A.)
+// Either way, concurrent callers share one in-flight promise so a burst of 401s
+// fires a single recovery (no rotation race / thundering herd).
 
 import { refreshToken, resolveTokenBase, type TokenSet, type OAuthHostOptions } from "./oauth.js";
 import { WefunderAuthError } from "./errors.js";
@@ -17,7 +21,12 @@ export interface TokenManagerOptions extends OAuthHostOptions {
   tokens: TokenSet;
   clientId?: string;
   clientSecret?: string;
-  /** Called with the new TokenSet on every successful rotation. */
+  /**
+   * For client_credentials clients: mint a fresh token from the stored grant inputs.
+   * When set (and there's no refresh token), this is the recovery strategy.
+   */
+  reMint?: () => Promise<TokenSet>;
+  /** Called with the new TokenSet on every successful recovery (rotation or re-mint). */
   onTokenRefresh?: (tokens: TokenSet) => void | Promise<void>;
   store?: TokenStore;
   fetch?: typeof fetch;
@@ -30,6 +39,7 @@ export class TokenManager {
   #tokens: TokenSet;
   readonly #clientId?: string;
   readonly #clientSecret?: string;
+  readonly #reMint?: () => Promise<TokenSet>;
   readonly #tokenBaseUrl: string;
   readonly #onTokenRefresh?: (tokens: TokenSet) => void | Promise<void>;
   readonly #store?: TokenStore;
@@ -42,6 +52,7 @@ export class TokenManager {
     this.#tokens = opts.tokens;
     this.#clientId = opts.clientId;
     this.#clientSecret = opts.clientSecret;
+    this.#reMint = opts.reMint;
     this.#tokenBaseUrl = resolveTokenBase(opts);
     this.#onTokenRefresh = opts.onTokenRefresh;
     this.#store = opts.store;
@@ -54,8 +65,9 @@ export class TokenManager {
     return this.#tokens;
   }
 
+  /** True if the manager can recover an expired token (rotate a refresh token or re-mint). */
   get canRefresh(): boolean {
-    return Boolean(this.#tokens.refreshToken && this.#clientId);
+    return Boolean((this.#tokens.refreshToken && this.#clientId) || this.#reMint);
   }
 
   /** Returns a valid access token, refreshing proactively if it's expired/near-expiry. */
@@ -68,30 +80,20 @@ export class TokenManager {
   }
 
   /**
-   * Force a refresh (e.g. after a 401). Coalesces concurrent calls into one
-   * network refresh so rotation isn't raced. Returns the new token set.
+   * Recover an expired/rejected token (e.g. after a 401): rotates the refresh token
+   * if there is one, otherwise re-mints (client_credentials). Coalesces concurrent
+   * calls into one network round-trip, then persists. Returns the new token set.
    */
   async refresh(): Promise<TokenSet> {
     if (this.#inflight) return this.#inflight;
-    if (!this.#tokens.refreshToken || !this.#clientId) {
+    const strategy = this.#recoveryStrategy();
+    if (!strategy) {
       throw new WefunderAuthError(
-        "Access token expired and no refresh token / client_id is configured.",
+        "Access token expired and no refresh token / re-mint capability is configured.",
       );
     }
-    const refreshTokenValue = this.#tokens.refreshToken;
-    const clientId = this.#clientId;
     this.#inflight = (async () => {
-      const next = await refreshToken({
-        clientId,
-        clientSecret: this.#clientSecret,
-        refreshToken: refreshTokenValue,
-        tokenBaseUrl: this.#tokenBaseUrl,
-        fetch: this.#fetch,
-        now: this.#now,
-      });
-      // Some servers omit a fresh refresh_token on rotation-disabled flows;
-      // keep the previous one rather than dropping our ability to refresh.
-      if (!next.refreshToken) next.refreshToken = refreshTokenValue;
+      const next = await strategy();
       this.#tokens = next;
       await this.#store?.save(next);
       await this.#onTokenRefresh?.(next);
@@ -102,5 +104,28 @@ export class TokenManager {
     } finally {
       this.#inflight = undefined;
     }
+  }
+
+  // Pick the recovery strategy: refresh_token rotation, else cc re-mint, else none.
+  #recoveryStrategy(): (() => Promise<TokenSet>) | undefined {
+    const refreshTokenValue = this.#tokens.refreshToken;
+    if (refreshTokenValue && this.#clientId) {
+      const clientId = this.#clientId;
+      return async () => {
+        const next = await refreshToken({
+          clientId,
+          clientSecret: this.#clientSecret,
+          refreshToken: refreshTokenValue,
+          tokenBaseUrl: this.#tokenBaseUrl,
+          fetch: this.#fetch,
+          now: this.#now,
+        });
+        // Some servers omit a fresh refresh_token on rotation-disabled flows;
+        // keep the previous one rather than dropping our ability to refresh.
+        if (!next.refreshToken) next.refreshToken = refreshTokenValue;
+        return next;
+      };
+    }
+    return this.#reMint;
   }
 }

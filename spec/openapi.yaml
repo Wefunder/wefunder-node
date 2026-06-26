@@ -2804,6 +2804,14 @@ components:
             details:
               type: object
               additionalProperties: true
+            request_id:
+              type: string
+              description: Unique identifier for this request. Quote it in support tickets.
+              example: req_abc123
+            remediation:
+              type: string
+              description: When present, a hint on how to resolve the error.
+              example: Obtain a new access token using the OAuth 2.0 flow.
     AttributionStats:
       type: object
       description: Aggregate attribution statistics for a campaign
