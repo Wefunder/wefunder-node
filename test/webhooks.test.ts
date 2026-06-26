@@ -9,6 +9,43 @@ function sign(secret: string, ts: number, body: string): string {
   return "sha256=" + createHmac("sha256", secret).update(`${ts}.${body}`).digest("hex");
 }
 
+describe("known-answer vector (frozen — not self-referential)", () => {
+  // The signature below is a FROZEN literal, computed independently of the SDK for
+  // these exact inputs (HMAC-SHA256 over "<ts>.<rawBody>", the scheme in
+  // app/jobs/attribution/webhook_delivery_job.rb). If the SDK's verification scheme
+  // ever regresses (message format, algorithm, prefix), this constant stops matching.
+  const KAT = {
+    secret: "whsec_known_answer_vector",
+    ts: 1_700_000_000,
+    body: '{"event":"investment.created","data":{"id":42}}',
+    signature: "sha256=f8d26f3a80ecee5f72f9fe87233f8cc71539f45e11d08c0c4f88d7d308fa1c0f",
+  };
+
+  it("verifies the frozen vector", () => {
+    expect(
+      verifyWebhook({
+        payload: KAT.body,
+        signature: KAT.signature,
+        timestamp: KAT.ts,
+        secret: KAT.secret,
+        toleranceSeconds: 0,
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects the frozen vector under any single-byte body change", () => {
+    expect(
+      verifyWebhook({
+        payload: KAT.body.replace("42", "43"),
+        signature: KAT.signature,
+        timestamp: KAT.ts,
+        secret: KAT.secret,
+        toleranceSeconds: 0,
+      }),
+    ).toBe(false);
+  });
+});
+
 describe("verifyWebhook", () => {
   const body = JSON.stringify({ event: "investment.created", id: 42 });
   const ts = 1_700_000_000;

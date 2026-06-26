@@ -115,6 +115,32 @@ describe("typed errors from the body (plan §4.1 #7)", () => {
     const wf = new Wefunder({ accessToken: "at_live_x", fetch, sleep: noSleep });
     await wf.users.me().catch((err: WefunderError) => expect(err.requestId).toBe("req_top"));
   });
+
+  it("prefers the X-Wf-Request-Id response header over the body's request_id", async () => {
+    const { fetch } = makeFetch(() =>
+      json(
+        { error: { type: "forbidden", message: "no", request_id: "req_body" } },
+        { status: 403, headers: { "content-type": "application/json", "x-wf-request-id": "req_header" } },
+      ),
+    );
+    const wf = new Wefunder({ accessToken: "at_live_x", fetch, sleep: noSleep });
+    await wf.users.me().catch((err: WefunderError) => expect(err.requestId).toBe("req_header"));
+  });
+
+  it("still captures request_id from the header when the body is non-JSON (edge HTML 502)", async () => {
+    // The edge can return an HTML 502 with no JSON error body; the header is still set.
+    const { fetch } = makeFetch(
+      () => new Response("<html>502 Bad Gateway</html>", { status: 502, headers: { "x-wf-request-id": "req_edge" } }),
+    );
+    const wf = new Wefunder({ accessToken: "at_live_x", fetch, sleep: noSleep });
+    await wf.users.me().then(
+      () => expect.fail("should have thrown"),
+      (err: WefunderError) => {
+        expect(err.status).toBe(502);
+        expect(err.requestId).toBe("req_edge");
+      },
+    );
+  });
 });
 
 describe("auto-pagination through the client", () => {

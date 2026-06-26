@@ -4,14 +4,24 @@
 
 Official TypeScript SDK for the [Wefunder API](https://docs.wefunder.com/api-reference).
 
-> **Beta.** Pinned to API version `2025-01-15`. The package is `0.x` — breaking
-> changes are possible while we stabilize. Feedback welcome.
+> **Beta.** The package is `0.x` — breaking changes are possible while we
+> stabilize. Feedback welcome.
 
 ```bash
 npm install @wefunder/sdk
 ```
 
 Node 18+ (uses the global `fetch`). ESM and CommonJS both supported.
+
+### Scope & versioning
+
+- **Surface:** this release covers the **stable + beta** public API (offerings,
+  investments, campaigns, syndicates, intents, attribution). Preview-only endpoints
+  (the partner SPV / sandbox-simulation surface) are intentionally **not** included yet.
+- **API version:** the SDK sends `Wefunder-Version: 2025-01-15` on every request,
+  forward-compatible with Wefunder's dated-version model. **The API does not resolve
+  this header yet**, so version pinning is not enforced server-side until that ships —
+  the header is correct in shape and will start taking effect transparently.
 
 ## Quickstart (server-to-server)
 
@@ -167,3 +177,21 @@ the credentials in a gitignored `.env` (`WEFUNDER_CLIENT_ID=` / `WEFUNDER_CLIENT
 
 The typed layer in `src/generated/` is produced by `@hey-api/openapi-ts` from
 `spec/openapi.yaml` and is never hand-edited. The hand-written shell in `src/` wraps it.
+
+### Syncing the spec (maintainers)
+
+`spec/openapi.yaml` is a vendored copy of the **public tier** (stable + beta) of the
+canonical Wefunder swagger. Preview/internal operations are excluded by design. To
+refresh it from a local wefunder checkout:
+
+```bash
+WEFUNDER_REPO=/path/to/wefunder npm run sync-spec
+npm run generate
+git add spec src/generated   # commit both together
+```
+
+`sync-spec` delegates filtering to the wefunder repo's own `build-filtered-spec.js`,
+so the public-tier definition can't drift between the two repos. CI's
+`generated code matches spec` job verifies `src/generated` matches the committed spec;
+it cannot reach the private canonical swagger, so run `sync-spec` before cutting a
+release. (`npm test` stays hermetic.)

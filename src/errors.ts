@@ -16,6 +16,14 @@ export interface WefunderErrorBody {
   request_id?: string;
 }
 
+/** Response header carrying the partner-facing request id (Stripe-style `req_…`). */
+export const REQUEST_ID_HEADER = "x-wf-request-id";
+
+/** Prefer the X-Wf-Request-Id response header; fall back to a body-derived id. */
+export function requestIdFrom(response: Response | undefined, bodyRequestId: string | undefined): string | undefined {
+  return response?.headers.get(REQUEST_ID_HEADER) ?? bodyRequestId;
+}
+
 export class WefunderError extends Error {
   readonly status: number;
   readonly type: string;
@@ -68,7 +76,10 @@ export async function errorFromResponse(response: Response): Promise<WefunderErr
     status: response.status,
     type: err.type ?? "api_error",
     message: err.message ?? response.statusText ?? "Request failed",
-    requestId: err.request_id ?? body?.request_id, // nested under error; top-level fallback
+    // X-Wf-Request-Id is set on every authenticated response (base_controller.rb),
+    // so it's present even when the body isn't JSON (e.g. an HTML 502 from the edge),
+    // unlike the nested error.request_id. Prefer the header; fall back to the body.
+    requestId: requestIdFrom(response, err.request_id ?? body?.request_id),
     details: err.details,
     remediation: err.remediation,
   });

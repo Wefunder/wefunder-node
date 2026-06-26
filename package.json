@@ -4,6 +4,26 @@
   "description": "Official TypeScript SDK for the Wefunder API (beta)",
   "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Wefunder/wefunder-node.git"
+  },
+  "homepage": "https://github.com/Wefunder/wefunder-node#readme",
+  "bugs": {
+    "url": "https://github.com/Wefunder/wefunder-node/issues"
+  },
+  "keywords": [
+    "wefunder",
+    "api",
+    "sdk",
+    "oauth",
+    "fintech",
+    "investing",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=18"
   },
@@ -26,7 +46,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "vitest run --config vitest.config.e2e.ts"
+    "test:e2e": "vitest run --config vitest.config.e2e.ts",
+    "sync-spec": "node scripts/sync-spec.mjs",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
     "@hey-api/client-fetch": "^0.13.1"
