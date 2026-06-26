@@ -156,3 +156,84 @@ describe("auto-pagination through the client", () => {
     expect(ids).toEqual([1, 2, 3]);
   });
 });
+
+describe("client_credentials auto-re-mint (stress-test A)", () => {
+  it("re-mints on 401 using the stored grant inputs, then retries", async () => {
+    let mints = 0;
+    const { fetch, calls } = makeFetch(async (c) => {
+      if (isOAuth(c)) {
+        mints++;
+        return json({ access_token: mints === 1 ? "at_test_OLD" : "at_test_NEW", expires_in: 7200 });
+      }
+      return bearer(c) === "Bearer at_test_OLD" ? new Response("{}", { status: 401 }) : json({ data: [{ id: 1 }], meta: {} });
+    });
+    const wf = await Wefunder.fromClientCredentials({ clientId: "c", clientSecret: "s", scopes: ["read:public"], fetch });
+    const page = await wf.offerings.list();
+    expect(page.data).toEqual([{ id: 1 }]);
+    // one initial mint + one re-mint (NOT a refresh_token grant — cc has none)
+    expect(calls.filter(isOAuth)).toHaveLength(2);
+    const grant = new URLSearchParams(calls.filter(isOAuth)[1]!.body).get("grant_type");
+    expect(grant).toBe("client_credentials");
+    expect(wf.tokens.accessToken).toBe("at_test_NEW");
+  });
+
+  it("coalesces concurrent re-mints into one", async () => {
+    let mints = 0;
+    const { fetch, calls } = makeFetch(async (c) => {
+      if (isOAuth(c)) {
+        mints++;
+        return json({ access_token: mints === 1 ? "at_test_OLD" : "at_test_NEW" });
+      }
+      return bearer(c) === "Bearer at_test_OLD" ? new Response("{}", { status: 401 }) : json({ data: [], meta: {} });
+    });
+    const wf = await Wefunder.fromClientCredentials({ clientId: "c", clientSecret: "s", fetch });
+    await Promise.all([wf.offerings.list(), wf.offerings.list(), wf.offerings.list()]);
+    expect(calls.filter(isOAuth)).toHaveLength(2); // 1 initial + 1 coalesced re-mint
+  });
+});
+
+describe("ergonomic list forwards query params (stress-test B)", () => {
+  it("offerings.list({ sort }) forwards sort to the request", async () => {
+    const { fetch, calls } = makeFetch(() => json({ data: [], meta: {} }));
+    const wf = new Wefunder({ accessToken: "at_test_x", fetch });
+    await wf.offerings.list({ sort: "most_raised" });
+    const u = new URL(calls.find((c) => c.url.includes("/explore"))!.url);
+    expect(u.searchParams.get("sort")).toBe("most_raised");
+  });
+
+  it("offerings.all({ sort }) preserves sort across every page", async () => {
+    const sortsSeen: (string | null)[] = [];
+    const { fetch } = makeFetch((c) => {
+      const u = new URL(c.url);
+      sortsSeen.push(u.searchParams.get("sort"));
+      return u.searchParams.get("cursor")
+        ? json({ data: [{ id: 2 }], meta: { has_more: false, next_cursor: null } })
+        : json({ data: [{ id: 1 }], meta: { has_more: true, next_cursor: 2 } });
+    });
+    const wf = new Wefunder({ accessToken: "at_test_x", fetch });
+    const ids: unknown[] = [];
+    for await (const o of wf.offerings.all({ sort: "newest" })) ids.push((o as { id: number }).id);
+    expect(ids).toEqual([1, 2]);
+    expect(sortsSeen).toEqual(["newest", "newest"]);
+  });
+});
+
+describe("public unwrap for raw ops (stress-test C)", () => {
+  it("returns the body on success and throws a typed error (with request_id) on failure", async () => {
+    const ok = makeFetch(() => json({ data: [{ id: 7 }], meta: {} }));
+    const wf1 = new Wefunder({ accessToken: "at_test_x", fetch: ok.fetch });
+    const page = (await wf1.unwrap(wf1.raw.listOfferings({ query: { sort: "newest" } }))) as { data?: { id: number }[] };
+    expect(page.data).toEqual([{ id: 7 }]);
+
+    const bad = makeFetch(() => json({ error: { type: "forbidden", message: "no", request_id: "req_z" } }, { status: 403 }));
+    const wf2 = new Wefunder({ accessToken: "at_test_x", fetch: bad.fetch, sleep: noSleep });
+    await wf2.unwrap(wf2.raw.listOfferings({})).then(
+      () => expect.fail("should throw"),
+      (e: WefunderError) => {
+        expect(e).toBeInstanceOf(WefunderError);
+        expect(e.status).toBe(403);
+        expect(e.requestId).toBe("req_z");
+      },
+    );
+  });
+});

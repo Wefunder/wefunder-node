@@ -498,6 +498,14 @@ export type _Error = {
         details?: {
             [key: string]: unknown;
         };
+        /**
+         * Unique identifier for this request. Quote it in support tickets.
+         */
+        request_id?: string;
+        /**
+         * When present, a hint on how to resolve the error.
+         */
+        remediation?: string;
     };
 };
 

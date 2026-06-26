@@ -7,6 +7,7 @@ export {
   DEFAULT_API_VERSION,
   type WefunderOptions,
   type Mode,
+  type OfferingSort,
 } from "./client.js";
 
 export { WefunderError, WefunderAuthError, REQUEST_ID_HEADER } from "./errors.js";

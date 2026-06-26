@@ -54,6 +54,9 @@ The SDK supports both OAuth 2.0 grants the API offers.
 ### `client_credentials` (server-side)
 
 `Wefunder.fromClientCredentials({ clientId, clientSecret, scopes })` — see above.
+These tokens are short-lived and have no refresh token, but the client keeps the
+grant inputs and **auto-re-mints** on expiry or a `401` — so a long-lived server can
+hold one `wf` and never hand-roll token recovery.
 
 ### `authorization_code` + PKCE (acting on behalf of a user)
 
@@ -105,7 +108,8 @@ The **API base** is `WefunderOptions.baseUrl` (default `https://api.wefunder.com
 
 ## Pagination
 
-List endpoints auto-paginate. The cursor is opaque — you never construct it.
+List endpoints auto-paginate. The cursor is opaque — you never construct it. List
+methods take the endpoint's documented query params, and they're preserved across pages.
 
 ```ts
 // Stream lazily (one page fetched at a time):
@@ -113,11 +117,17 @@ for await (const inv of wf.investments.all()) {
   console.log(inv.id);
 }
 
+// Query params are forwarded — e.g. sort the offerings browser (sort is preserved
+// on every page):
+for await (const offering of wf.offerings.all({ sort: "most_raised" })) {
+  console.log(offering.id);
+}
+
 // Or collect everything:
 const all = await wf.investments.collect();
 
 // Or drive pages yourself (gives you `meta`):
-const page = await wf.investments.list();
+const page = await wf.offerings.list({ sort: "newest" });
 console.log(page.data, page.meta?.next_cursor);
 ```
 
@@ -164,9 +174,14 @@ app.post("/webhooks", express.raw({ type: "application/json" }), (req, res) => {
 ## Escape hatch: `wf.raw`
 
 Ergonomic namespaces cover the common GA resources. Every generated operation is also
-available, pre-bound, under `wf.raw`:
+available, pre-bound, under `wf.raw`. Raw ops return the low-level `{ data, error,
+response }` result; wrap them in `wf.unwrap(...)` to get the same typed-error +
+envelope handling the namespaces use (a `WefunderError` with `request_id` on failure):
 
 ```ts
+const members = await wf.unwrap(wf.raw.listSyndicateMembers({ path: { syndicate_id: 1 } }));
+
+// Or handle the raw result yourself:
 const res = await wf.raw.listSyndicateMembers({ path: { syndicate_id: 1 } });
 ```
 
