@@ -91,8 +91,13 @@ export function createFetch(deps: HttpDeps): typeof fetch {
         networkError = err;
       }
 
-      // --- 401: refresh once, then retry ---
-      if (response?.status === 401 && !refreshed && deps.tokenManager?.canRefresh) {
+      // --- 401: refresh once, then retry (any method — a 401 means the request
+      // was rejected before processing, so re-sending is safe). The hey-api client
+      // calls us with (url, init) where init.body is a string, so the retry can
+      // re-send the body freely. Guard the one unsafe case: a `Request` whose body
+      // stream was already consumed can't be replayed — skip the retry there.
+      const replayable = !(input instanceof Request && input.bodyUsed);
+      if (response?.status === 401 && !refreshed && replayable && deps.tokenManager?.canRefresh) {
         refreshed = true;
         const next = await deps.tokenManager.refresh();
         init = withBearer(input, init, next.accessToken);

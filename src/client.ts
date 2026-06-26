@@ -8,7 +8,7 @@
 import { createClient, type Client } from "@hey-api/client-fetch";
 import { createFetch, type RetryOptions } from "./http.js";
 import { TokenManager, type TokenStore } from "./token-manager.js";
-import { WefunderError } from "./errors.js";
+import { WefunderError, requestIdFrom } from "./errors.js";
 import { clientCredentialsGrant, type TokenSet } from "./oauth.js";
 import { paginate, collect, type Cursor, type Page } from "./pagination.js";
 import * as ops from "./generated/sdk.gen.js";
@@ -160,7 +160,8 @@ export class Wefunder {
       status,
       type: env.error?.type ?? "api_error",
       message: env.error?.message ?? response?.statusText ?? "Request failed",
-      requestId: env.error?.request_id ?? env.request_id,
+      // X-Wf-Request-Id header is primary (present even on non-JSON edge errors).
+      requestId: requestIdFrom(response, env.error?.request_id ?? env.request_id),
       details: env.error?.details,
       remediation: env.error?.remediation,
     });

@@ -9,7 +9,7 @@ export {
   type Mode,
 } from "./client.js";
 
-export { WefunderError, WefunderAuthError } from "./errors.js";
+export { WefunderError, WefunderAuthError, REQUEST_ID_HEADER } from "./errors.js";
 
 export {
   // PKCE + authorization_code
