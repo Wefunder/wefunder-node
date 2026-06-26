@@ -9,7 +9,7 @@ import { createClient, type Client } from "@hey-api/client-fetch";
 import { createFetch, type RetryOptions } from "./http.js";
 import { TokenManager, type TokenStore } from "./token-manager.js";
 import { WefunderError, requestIdFrom } from "./errors.js";
-import { clientCredentialsGrant, type TokenSet } from "./oauth.js";
+import { clientCredentialsGrant, type TokenSet, type OAuthHostOptions } from "./oauth.js";
 import { paginate, collect, type Cursor, type Page } from "./pagination.js";
 import * as ops from "./generated/sdk.gen.js";
 import type {
@@ -33,7 +33,7 @@ export function modeForToken(token: string): Mode {
   return "unknown";
 }
 
-export interface WefunderOptions {
+export interface WefunderOptions extends OAuthHostOptions {
   /** A bearer access token. Either this or `tokens` is required. */
   accessToken?: string;
   /** A full token set (access + rotating refresh). Enables auto-refresh. */
@@ -44,7 +44,7 @@ export interface WefunderOptions {
   apiVersion?: string;
   /** Override the API base. The edge proxy routes mode by token prefix — leave default in prod. */
   baseUrl?: string;
-  oauthBaseUrl?: string;
+  // OAuth hosts (oauthBaseUrl / authorizeBaseUrl / tokenBaseUrl) come from OAuthHostOptions.
   store?: TokenStore;
   onTokenRefresh?: (tokens: TokenSet) => void | Promise<void>;
   retry?: RetryOptions;
@@ -83,6 +83,7 @@ export class Wefunder {
       clientId: opts.clientId,
       clientSecret: opts.clientSecret,
       oauthBaseUrl: opts.oauthBaseUrl,
+      tokenBaseUrl: opts.tokenBaseUrl,
       onTokenRefresh: opts.onTokenRefresh,
       store: opts.store,
       fetch: opts.fetch,
@@ -109,21 +110,23 @@ export class Wefunder {
   }
 
   /** Server-to-server: exchange client credentials for a token, then build a client. */
-  static async fromClientCredentials(opts: {
-    clientId: string;
-    clientSecret: string;
-    scopes?: string[];
-    oauthBaseUrl?: string;
-    apiVersion?: string;
-    baseUrl?: string;
-    fetch?: typeof fetch;
-    now?: () => number;
-  }): Promise<Wefunder> {
+  static async fromClientCredentials(
+    opts: OAuthHostOptions & {
+      clientId: string;
+      clientSecret: string;
+      scopes?: string[];
+      apiVersion?: string;
+      baseUrl?: string;
+      fetch?: typeof fetch;
+      now?: () => number;
+    },
+  ): Promise<Wefunder> {
     const tokens = await clientCredentialsGrant({
       clientId: opts.clientId,
       clientSecret: opts.clientSecret,
       scopes: opts.scopes,
       oauthBaseUrl: opts.oauthBaseUrl,
+      tokenBaseUrl: opts.tokenBaseUrl,
       fetch: opts.fetch,
       now: opts.now,
     });
@@ -132,6 +135,7 @@ export class Wefunder {
       clientId: opts.clientId,
       clientSecret: opts.clientSecret,
       oauthBaseUrl: opts.oauthBaseUrl,
+      tokenBaseUrl: opts.tokenBaseUrl,
       apiVersion: opts.apiVersion,
       baseUrl: opts.baseUrl,
       fetch: opts.fetch,

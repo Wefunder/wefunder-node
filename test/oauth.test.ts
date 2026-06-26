@@ -6,6 +6,8 @@ import {
   clientCredentialsGrant,
   refreshToken,
   DEFAULT_OAUTH_BASE_URL,
+  DEFAULT_AUTHORIZE_BASE_URL,
+  DEFAULT_TOKEN_BASE_URL,
 } from "../src/oauth.js";
 import { makeFetch, json } from "./helpers.js";
 
@@ -87,5 +89,74 @@ describe("token grants hit the OAuth host with correct params", () => {
   it("throws a descriptive error on a non-200 token response", async () => {
     const { fetch } = makeFetch(() => json({ error: "invalid_grant" }, { status: 400 }));
     await expect(refreshToken({ clientId: "cid", refreshToken: "bad", fetch })).rejects.toThrow(/400/);
+  });
+});
+
+describe("OAuth host split (#10): authorize host vs token host", () => {
+  const tok = () => json({ access_token: "at_test_x" });
+
+  it("defaults: authorize on wefunder.com, token on wefunder.com (transition)", async () => {
+    expect(DEFAULT_AUTHORIZE_BASE_URL).toBe("https://wefunder.com/oauth");
+    expect(DEFAULT_TOKEN_BASE_URL).toBe("https://wefunder.com/oauth");
+
+    const url = createAuthorizationUrl({
+      clientId: "c", redirectUri: "https://a/cb", scopes: ["read:public"], state: "s", pkce: generatePkce(),
+    });
+    expect(url.startsWith(`${DEFAULT_AUTHORIZE_BASE_URL}/authorize`)).toBe(true);
+
+    const cc = makeFetch(tok);
+    await clientCredentialsGrant({ clientId: "c", clientSecret: "s", fetch: cc.fetch });
+    expect(cc.calls[0]!.url).toBe(`${DEFAULT_TOKEN_BASE_URL}/token`);
+  });
+
+  it("tokenBaseUrl overrides ONLY the token host (authorize unaffected)", async () => {
+    const cc = makeFetch(tok);
+    await clientCredentialsGrant({
+      clientId: "c", clientSecret: "s", tokenBaseUrl: "https://api.wefunder.com/oauth", fetch: cc.fetch,
+    });
+    expect(cc.calls[0]!.url).toBe("https://api.wefunder.com/oauth/token");
+
+    // authorize URL still uses the authorize default
+    const url = createAuthorizationUrl({
+      clientId: "c", redirectUri: "https://a/cb", scopes: ["x"], state: "s", pkce: generatePkce(),
+      tokenBaseUrl: "https://api.wefunder.com/oauth",
+    });
+    expect(url.startsWith(`${DEFAULT_AUTHORIZE_BASE_URL}/authorize`)).toBe(true);
+  });
+
+  it("authorizeBaseUrl overrides ONLY the authorize host", () => {
+    const url = createAuthorizationUrl({
+      clientId: "c", redirectUri: "https://a/cb", scopes: ["x"], state: "s", pkce: generatePkce(),
+      authorizeBaseUrl: "https://login.example/oauth",
+    });
+    expect(url.startsWith("https://login.example/oauth/authorize")).toBe(true);
+  });
+
+  it("oauthBaseUrl alias sets BOTH hosts", async () => {
+    const cc = makeFetch(tok);
+    await clientCredentialsGrant({
+      clientId: "c", clientSecret: "s", oauthBaseUrl: "https://both.example/oauth", fetch: cc.fetch,
+    });
+    expect(cc.calls[0]!.url).toBe("https://both.example/oauth/token");
+    const url = createAuthorizationUrl({
+      clientId: "c", redirectUri: "https://a/cb", scopes: ["x"], state: "s", pkce: generatePkce(),
+      oauthBaseUrl: "https://both.example/oauth",
+    });
+    expect(url.startsWith("https://both.example/oauth/authorize")).toBe(true);
+  });
+
+  it("precedence: specific tokenBaseUrl beats the oauthBaseUrl alias", async () => {
+    const cc = makeFetch(tok);
+    await refreshToken({
+      clientId: "c", refreshToken: "r",
+      oauthBaseUrl: "https://alias.example/oauth",
+      tokenBaseUrl: "https://specific.example/oauth",
+      fetch: cc.fetch,
+    });
+    expect(cc.calls[0]!.url).toBe("https://specific.example/oauth/token");
+  });
+
+  it("DEFAULT_OAUTH_BASE_URL stays a back-compat alias of the authorize default", () => {
+    expect(DEFAULT_OAUTH_BASE_URL).toBe(DEFAULT_AUTHORIZE_BASE_URL);
   });
 });

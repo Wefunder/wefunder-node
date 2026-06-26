@@ -94,6 +94,15 @@ const wf = new Wefunder({
 });
 ```
 
+### Hosts (advanced)
+
+OAuth uses two hosts, independently overridable:
+
+- **authorize host** — the browser consent redirect (`createAuthorizationUrl`). Defaults to `https://wefunder.com/oauth`.
+- **token host** — `/token` + refresh (`fromClientCredentials`, `exchangeCode`, refresh). Defaults to `https://wefunder.com/oauth` today; it will move to `https://api.wefunder.com/oauth` when Wefunder's edge gateway ships. Override via `tokenBaseUrl` (or set both at once with `oauthBaseUrl`).
+
+The **API base** is `WefunderOptions.baseUrl` (default `https://api.wefunder.com/api/v2`). When Wefunder ships version-free URLs, the canonical base drops `/api/v2`; the current path stays as a back-compat alias, so no change is required on your side.
+
 ## Pagination
 
 List endpoints auto-paginate. The cursor is opaque — you never construct it.

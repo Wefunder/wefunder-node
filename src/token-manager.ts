@@ -4,7 +4,7 @@
 // can use it. Concurrent callers share a single in-flight refresh promise so a
 // burst of 401s doesn't fire N refreshes (which would invalidate each other).
 
-import { refreshToken, type TokenSet } from "./oauth.js";
+import { refreshToken, resolveTokenBase, type TokenSet, type OAuthHostOptions } from "./oauth.js";
 import { WefunderAuthError } from "./errors.js";
 
 /** Pluggable persistence for the rotating token set (DB row, secrets manager, etc.). */
@@ -13,11 +13,10 @@ export interface TokenStore {
   save(tokens: TokenSet): Promise<void> | void;
 }
 
-export interface TokenManagerOptions {
+export interface TokenManagerOptions extends OAuthHostOptions {
   tokens: TokenSet;
   clientId?: string;
   clientSecret?: string;
-  oauthBaseUrl?: string;
   /** Called with the new TokenSet on every successful rotation. */
   onTokenRefresh?: (tokens: TokenSet) => void | Promise<void>;
   store?: TokenStore;
@@ -31,7 +30,7 @@ export class TokenManager {
   #tokens: TokenSet;
   readonly #clientId?: string;
   readonly #clientSecret?: string;
-  readonly #oauthBaseUrl?: string;
+  readonly #tokenBaseUrl: string;
   readonly #onTokenRefresh?: (tokens: TokenSet) => void | Promise<void>;
   readonly #store?: TokenStore;
   readonly #fetch: typeof fetch;
@@ -43,7 +42,7 @@ export class TokenManager {
     this.#tokens = opts.tokens;
     this.#clientId = opts.clientId;
     this.#clientSecret = opts.clientSecret;
-    this.#oauthBaseUrl = opts.oauthBaseUrl;
+    this.#tokenBaseUrl = resolveTokenBase(opts);
     this.#onTokenRefresh = opts.onTokenRefresh;
     this.#store = opts.store;
     this.#fetch = opts.fetch ?? fetch;
@@ -86,7 +85,7 @@ export class TokenManager {
         clientId,
         clientSecret: this.#clientSecret,
         refreshToken: refreshTokenValue,
-        oauthBaseUrl: this.#oauthBaseUrl,
+        tokenBaseUrl: this.#tokenBaseUrl,
         fetch: this.#fetch,
         now: this.#now,
       });
