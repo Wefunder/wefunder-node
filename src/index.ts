@@ -20,7 +20,11 @@ export {
   clientCredentialsGrant,
   // refresh (rotation)
   refreshToken,
+  // host config (authorize host vs token host — see #10 split)
+  DEFAULT_AUTHORIZE_BASE_URL,
+  DEFAULT_TOKEN_BASE_URL,
   DEFAULT_OAUTH_BASE_URL,
+  type OAuthHostOptions,
   type TokenSet,
   type Pkce,
   type AuthorizationUrlOptions,
