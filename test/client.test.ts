@@ -79,10 +79,19 @@ describe("refresh rotation (CRITICAL — plan §9)", () => {
 });
 
 describe("typed errors from the body (plan §4.1 #7)", () => {
-  it("reads type/message/details and request_id from the JSON body", async () => {
+  it("reads type/message/details/request_id/remediation from error (nested, real shape)", async () => {
+    // Matches api/v2/base_controller.rb#render_error: everything nests under `error`.
     const { fetch } = makeFetch(() =>
       json(
-        { error: { type: "validation_error", message: "amount too low", details: { field: "amount" } }, request_id: "req_xyz" },
+        {
+          error: {
+            type: "validation_error",
+            message: "amount too low",
+            details: { field: "amount" },
+            request_id: "req_xyz",
+            remediation: "Raise the amount to at least $100.",
+          },
+        },
         { status: 422 },
       ),
     );
@@ -96,8 +105,15 @@ describe("typed errors from the body (plan §4.1 #7)", () => {
         expect(err.message).toBe("amount too low");
         expect(err.requestId).toBe("req_xyz");
         expect(err.details).toEqual({ field: "amount" });
+        expect(err.remediation).toBe("Raise the amount to at least $100.");
       },
     );
+  });
+
+  it("falls back to a top-level request_id if an envelope ever puts it there", async () => {
+    const { fetch } = makeFetch(() => json({ error: { type: "x", message: "y" }, request_id: "req_top" }, { status: 400 }));
+    const wf = new Wefunder({ accessToken: "at_live_x", fetch, sleep: noSleep });
+    await wf.users.me().catch((err: WefunderError) => expect(err.requestId).toBe("req_top"));
   });
 });
 

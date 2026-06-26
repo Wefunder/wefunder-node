@@ -149,16 +149,20 @@ export class Wefunder {
     const { data, error, response } = await p;
     if (response && response.ok && error === undefined) return data as T;
     const status = response?.status ?? 0;
-    // request_id lives in the runtime body (plan §4.1 #7) even though the Error
-    // schema doesn't model it — read it loosely.
-    const env = (error ?? {}) as { error?: { type?: string; message?: string; details?: unknown } };
-    const requestId = (error as { request_id?: string } | undefined)?.request_id;
+    // The runtime error envelope nests request_id + remediation UNDER `error`
+    // (api/v2/base_controller.rb#render_error), even though the spec's Error
+    // schema models neither. Read them from there; fall back to top-level.
+    const env = (error ?? {}) as {
+      error?: { type?: string; message?: string; details?: unknown; request_id?: string; remediation?: string };
+      request_id?: string;
+    };
     throw new WefunderError({
       status,
       type: env.error?.type ?? "api_error",
       message: env.error?.message ?? response?.statusText ?? "Request failed",
-      requestId,
+      requestId: env.error?.request_id ?? env.request_id,
       details: env.error?.details,
+      remediation: env.error?.remediation,
     });
   }
 

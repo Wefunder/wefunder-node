@@ -75,8 +75,17 @@ describe.skipIf(!hasCreds)("live sandbox E2E", () => {
     );
   }, 30_000);
 
-  it("rejects a read:profile call (client_credentials may only hold read:public)", async () => {
+  it("rejects a read:profile call with a typed 403 that carries a request_id (nested-parse)", async () => {
     // users/me requires read:profile; a client_credentials token can't have it.
-    await expect(wf.users.me()).rejects.toBeInstanceOf(WefunderError);
+    // This also proves we parse request_id from the REAL nested `error.request_id`.
+    await wf.users.me().then(
+      () => expect.fail("client_credentials should not reach /users/me"),
+      (err: WefunderError) => {
+        expect(err).toBeInstanceOf(WefunderError);
+        expect(err.status).toBe(403);
+        expect(err.type).toBe("insufficient_scope");
+        expect(err.requestId).toBeTruthy();
+      },
+    );
   }, 30_000);
 });

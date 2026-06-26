@@ -24,9 +24,16 @@ const wf = await Wefunder.fromClientCredentials({
   scopes: ["read:public"],
 });
 
-const me = await wf.users.me();
-console.log(me.id);
+// A client_credentials token can only hold `read:public` — it acts as your app,
+// with no user. So it can browse public offerings, but NOT user-scoped data.
+const page = await wf.offerings.list();
+console.log(`${page.data?.length} offerings`);
 ```
+
+> **`wf.users.me()` won't work with `client_credentials`.** `/users/me` requires
+> `read:profile`, a user-context scope — calling it with a `client_credentials`
+> token throws `WefunderError` (`403 insufficient_scope`). To read user data, use
+> the `authorization_code` + PKCE flow below and request `read:profile`.
 
 ## Authentication
 

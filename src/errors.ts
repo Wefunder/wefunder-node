@@ -1,15 +1,18 @@
-// Typed errors mapped from the REAL Wefunder error envelope:
-//   { "error": { "type", "message", "details" }, "request_id": "..." }
-// Per the contract review (plan §4.1 #7): request_id lives in the JSON BODY,
-// not an x-request-id header. We read it from the body.
+// Typed errors mapped from the REAL Wefunder error envelope. Confirmed against
+// api/v2/base_controller.rb#render_error (and the doorkeeper render options):
+//   { "error": { "type", "message", "details"?, "request_id", "remediation"? } }
+// NOTE: request_id and remediation are NESTED under `error` (not top-level) — the
+// spec's Error schema models neither, but the runtime always emits request_id.
 
 export interface WefunderErrorBody {
   error?: {
     type?: string;
     message?: string;
     details?: unknown;
+    request_id?: string;
+    remediation?: string;
   };
-  // request_id is top-level in the envelope
+  // Defensive: some envelopes (e.g. *WithMeta success meta) carry request_id here.
   request_id?: string;
 }
 
@@ -18,6 +21,8 @@ export class WefunderError extends Error {
   readonly type: string;
   readonly requestId?: string;
   readonly details?: unknown;
+  /** Server-provided hint on how to resolve the error, when present. */
+  readonly remediation?: string;
   /** Documentation pointer surfaced to developers in stack traces / logs. */
   readonly documentationUrl = "https://docs.wefunder.com/api-reference";
 
@@ -27,6 +32,7 @@ export class WefunderError extends Error {
     message: string;
     requestId?: string;
     details?: unknown;
+    remediation?: string;
   }) {
     super(args.message);
     this.name = "WefunderError";
@@ -34,6 +40,7 @@ export class WefunderError extends Error {
     this.type = args.type;
     this.requestId = args.requestId;
     this.details = args.details;
+    this.remediation = args.remediation;
   }
 }
 
@@ -61,7 +68,8 @@ export async function errorFromResponse(response: Response): Promise<WefunderErr
     status: response.status,
     type: err.type ?? "api_error",
     message: err.message ?? response.statusText ?? "Request failed",
-    requestId: body?.request_id,
+    requestId: err.request_id ?? body?.request_id, // nested under error; top-level fallback
     details: err.details,
+    remediation: err.remediation,
   });
 }

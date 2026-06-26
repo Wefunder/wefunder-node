@@ -11,9 +11,8 @@ async function main() {
 
   console.log("mode:", wf.mode); // "live" or "test", from the token prefix
 
-  const me = await wf.users.me();
-  console.log("authenticated as user", me.id);
-
+  // client_credentials holds only read:public — browse public offerings.
+  // (wf.users.me() would throw 403 insufficient_scope: it needs read:profile.)
   for await (const offering of wf.offerings.all()) {
     console.log(offering.id);
   }
