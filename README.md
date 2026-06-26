@@ -1,5 +1,7 @@
 # @wefunder/sdk (beta)
 
+[![CI](https://github.com/Wefunder/wefunder-node/actions/workflows/ci.yml/badge.svg)](https://github.com/Wefunder/wefunder-node/actions/workflows/ci.yml)
+
 Official TypeScript SDK for the [Wefunder API](https://docs.wefunder.com/api-reference).
 
 > **Beta.** Pinned to API version `2025-01-15`. The package is `0.x` — breaking
