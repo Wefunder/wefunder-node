@@ -148,9 +148,13 @@ const res = await wf.raw.listSyndicateMembers({ path: { syndicate_id: 1 } });
 npm install
 npm run generate   # regenerate src/generated from spec/openapi.yaml
 npm run typecheck
-npm test
+npm test           # hermetic unit tests (no network)
+npm run test:e2e   # live sandbox E2E — needs WEFUNDER_CLIENT_ID/SECRET (or a .env); auto-skips otherwise
 npm run build
 ```
+
+The live E2E hits `api.wefunder.com` with a sandbox app's `client_credentials`. Put
+the credentials in a gitignored `.env` (`WEFUNDER_CLIENT_ID=` / `WEFUNDER_CLIENT_SECRET=`).
 
 The typed layer in `src/generated/` is produced by `@hey-api/openapi-ts` from
 `spec/openapi.yaml` and is never hand-edited. The hand-written shell in `src/` wraps it.
