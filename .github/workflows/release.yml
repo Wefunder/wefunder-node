@@ -1,11 +1,14 @@
 name: Release
 
-# Publishes to npm with provenance when a version tag is pushed. Release flow:
+# Publishes to npm when a version tag is pushed. Release flow:
 #   npm version prerelease --preid beta   # bumps package.json + creates tag v0.1.0-beta.N
 #   git push --follow-tags                # this workflow takes it from here
-# No manual `npm publish`, no OTP — auth is a repo secret (NPM_TOKEN), 2FA is satisfied
-# by using an npm Automation/Granular token. Provenance gives the package a verified
-# "built from this repo + workflow" attestation (the badge on npmjs.com).
+#
+# Auth is npm TRUSTED PUBLISHING (OIDC) — no NPM_TOKEN secret to store/rotate/leak.
+# The package on npm is configured to trust this repo + workflow; npm exchanges the
+# GitHub OIDC token (id-token: write) for a short-lived credential at publish time,
+# and provenance is generated automatically. One-time npm setup: package → Settings →
+# Trusted Publishing → GitHub Actions (repo Wefunder/wefunder-node, workflow release.yml).
 on:
   push:
     tags:
@@ -13,7 +16,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write # required for npm provenance (OIDC)
+  id-token: write # OIDC: trusted publishing + provenance
 
 jobs:
   publish:
@@ -23,8 +26,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          registry-url: "https://registry.npmjs.org" # configures .npmrc to use NODE_AUTH_TOKEN
+          registry-url: "https://registry.npmjs.org"
           cache: npm
+      # Trusted publishing requires npm >= 11.5.1; Node 22 ships npm 10.x.
+      - run: npm install -g npm@latest
       - run: npm ci
 
       # Guard: the pushed tag must match package.json (v0.1.0-beta.2 ⇄ 0.1.0-beta.2),
@@ -40,16 +45,14 @@ jobs:
           echo "VERSION=$PKG" >> "$GITHUB_ENV"
 
       # publish runs prepublishOnly (typecheck + test + build) as the release gate.
-      # --provenance attaches the OIDC attestation; --access public for the scoped pkg.
-      - name: Publish to npm with provenance
+      # No token: npm authenticates via OIDC (trusted publishing) and auto-generates
+      # provenance. --access public for the scoped package.
+      - name: Publish to npm (trusted publishing + provenance)
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       # `npm publish` set the `latest` dist-tag. While pre-GA, also point `beta` at this
-      # release so `@beta` tracks the newest prerelease. Skipped for stable (no `-`) versions.
+      # release so `@beta` tracks the newest prerelease (skipped for stable versions).
+      # Uses the same OIDC trusted-publishing auth as the publish above.
       - name: Keep `beta` dist-tag current (prereleases only)
         if: contains(env.VERSION, '-')
         run: npm dist-tag add "@wefunder/sdk@${VERSION}" beta
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

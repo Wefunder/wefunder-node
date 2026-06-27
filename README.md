@@ -233,10 +233,14 @@ git push --follow-tags               # pushes the commit + tag → CI publishes
 ```
 
 The workflow verifies the tag matches `package.json`, publishes to the `latest`
-dist-tag with `--provenance`, and (for prerelease versions) also points `beta` at it.
-For a stable release use `npm version patch|minor|major` (no `--preid`); `beta` is then
-left untouched.
+dist-tag, and (for prerelease versions) also points `beta` at it. For a stable release
+use `npm version patch|minor|major` (no `--preid`); `beta` is then left untouched.
 
-**One-time setup:** add an npm **Automation** (or Granular, publish-scoped) token as the
-repo secret `NPM_TOKEN`. Automation tokens bypass 2FA, which CI requires. Provenance
-also requires this public repo + public package (both true).
+**Auth is npm Trusted Publishing (OIDC) — no token to store.** npm exchanges the
+workflow's GitHub OIDC token for a short-lived credential at publish time, and
+provenance is generated automatically (verified-build badge on npmjs.com).
+
+**One-time setup:** on npmjs.com, `@wefunder/sdk` → **Settings → Trusted Publishing →
+GitHub Actions**, with org/user `Wefunder`, repository `wefunder-node`, workflow
+`release.yml` (leave Environment blank). No repo secret needed. (Requires this public
+repo + public package — both true.)
