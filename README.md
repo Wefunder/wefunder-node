@@ -11,7 +11,7 @@ Official TypeScript SDK for the [Wefunder API](https://docs.wefunder.com/api-ref
 npm install @wefunder/sdk
 ```
 
-Node 18+ (uses the global `fetch`). ESM and CommonJS both supported.
+Node 20+ (uses the global `fetch`). ESM and CommonJS both supported.
 
 ### Scope & versioning
 
