@@ -219,3 +219,24 @@ so the public-tier definition can't drift between the two repos. CI's
 `generated code matches spec` job verifies `src/generated` matches the committed spec;
 it cannot reach the private canonical swagger, so run `sync-spec` before cutting a
 release. (`npm test` stays hermetic.)
+
+### Releasing (maintainers)
+
+Releases publish from CI with provenance — no manual `npm publish` or OTP. Bump the
+version and push the tag; the `Release` workflow (`.github/workflows/release.yml`,
+triggered on `v*` tags) runs the `prepublishOnly` gate and publishes:
+
+```bash
+git checkout main && git pull        # clean tree, on main
+npm version prerelease --preid beta  # 0.1.0-beta.N → N+1, commits + tags v0.1.0-beta.N+1
+git push --follow-tags               # pushes the commit + tag → CI publishes
+```
+
+The workflow verifies the tag matches `package.json`, publishes to the `latest`
+dist-tag with `--provenance`, and (for prerelease versions) also points `beta` at it.
+For a stable release use `npm version patch|minor|major` (no `--preid`); `beta` is then
+left untouched.
+
+**One-time setup:** add an npm **Automation** (or Granular, publish-scoped) token as the
+repo secret `NPM_TOKEN`. Automation tokens bypass 2FA, which CI requires. Provenance
+also requires this public repo + public package (both true).
