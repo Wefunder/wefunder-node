@@ -5,7 +5,7 @@
 // auto-pagination. Resource namespaces cover the common GA paths; `raw` exposes
 // every generated operation, pre-bound, as an escape hatch.
 
-import { createClient, type Client } from "@hey-api/client-fetch";
+import { createClient, type Client } from "./generated/client/index.js";
 import { createFetch, type RetryOptions } from "./http.js";
 import { TokenManager, type TokenStore } from "./token-manager.js";
 import { WefunderError, requestIdFrom } from "./errors.js";
