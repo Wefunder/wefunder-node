@@ -8,10 +8,11 @@ Official TypeScript SDK for the [Wefunder API](https://docs.wefunder.com/api-ref
 > stabilize. Feedback welcome.
 
 ```bash
-npm install @wefunder/sdk
+npm install @wefunder/sdk@beta
 ```
 
-Node 20+ (uses the global `fetch`). ESM and CommonJS both supported.
+While in beta, releases publish to the `@beta` dist-tag (npm reserves `latest` for the
+eventual stable release). Node 20+ (uses the global `fetch`). ESM and CommonJS both supported.
 
 ### Scope & versioning
 
@@ -232,9 +233,10 @@ npm version prerelease --preid beta  # 0.1.0-beta.N → N+1, commits + tags v0.1
 git push --follow-tags               # pushes the commit + tag → CI publishes
 ```
 
-The workflow verifies the tag matches `package.json`, publishes to the `latest`
-dist-tag, and (for prerelease versions) also points `beta` at it. For a stable release
-use `npm version patch|minor|major` (no `--preid`); `beta` is then left untouched.
+The workflow verifies the tag matches `package.json`, then publishes — prerelease
+versions (e.g. `0.1.0-beta.N`) to the **`beta`** dist-tag (npm requires an explicit tag
+for prereleases), stable versions to `latest`. For a stable release use
+`npm version patch|minor|major` (no `--preid`).
 
 **Auth is npm Trusted Publishing (OIDC) — no token to store.** npm exchanges the
 workflow's GitHub OIDC token for a short-lived credential at publish time, and

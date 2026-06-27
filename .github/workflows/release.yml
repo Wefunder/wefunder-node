@@ -47,12 +47,17 @@ jobs:
       # publish runs prepublishOnly (typecheck + test + build) as the release gate.
       # No token: npm authenticates via OIDC (trusted publishing) and auto-generates
       # provenance. --access public for the scoped package.
+      #
+      # npm refuses to put a prerelease on `latest` implicitly ("must specify a tag
+      # when publishing a prerelease"), so prereleases publish to the `beta` tag — a
+      # single `publish` op (the only action the trusted publisher authorizes; a
+      # separate `dist-tag` op isn't covered). `latest` stays on the last stable until
+      # GA, so the canonical pre-GA install is `@wefunder/sdk@beta`. Stable releases
+      # (no `-` in the version) publish to `latest` as usual.
       - name: Publish to npm (trusted publishing + provenance)
-        run: npm publish --provenance --access public
-
-      # `npm publish` set the `latest` dist-tag. While pre-GA, also point `beta` at this
-      # release so `@beta` tracks the newest prerelease (skipped for stable versions).
-      # Uses the same OIDC trusted-publishing auth as the publish above.
-      - name: Keep `beta` dist-tag current (prereleases only)
-        if: contains(env.VERSION, '-')
-        run: npm dist-tag add "@wefunder/sdk@${VERSION}" beta
+        run: |
+          if [[ "$VERSION" == *-* ]]; then
+            npm publish --provenance --access public --tag beta
+          else
+            npm publish --provenance --access public
+          fi
