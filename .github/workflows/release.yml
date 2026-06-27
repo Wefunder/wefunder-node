@@ -1,0 +1,55 @@
+name: Release
+
+# Publishes to npm with provenance when a version tag is pushed. Release flow:
+#   npm version prerelease --preid beta   # bumps package.json + creates tag v0.1.0-beta.N
+#   git push --follow-tags                # this workflow takes it from here
+# No manual `npm publish`, no OTP — auth is a repo secret (NPM_TOKEN), 2FA is satisfied
+# by using an npm Automation/Granular token. Provenance gives the package a verified
+# "built from this repo + workflow" attestation (the badge on npmjs.com).
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write # required for npm provenance (OIDC)
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org" # configures .npmrc to use NODE_AUTH_TOKEN
+          cache: npm
+      - run: npm ci
+
+      # Guard: the pushed tag must match package.json (v0.1.0-beta.2 ⇄ 0.1.0-beta.2),
+      # so a stray tag can't publish a mismatched version. Exposes VERSION downstream.
+      - name: Verify tag matches package version
+        run: |
+          PKG=$(node -p "require('./package.json').version")
+          TAG="${GITHUB_REF_NAME#v}"
+          if [ "$PKG" != "$TAG" ]; then
+            echo "::error::tag $GITHUB_REF_NAME ($TAG) != package.json version ($PKG)"
+            exit 1
+          fi
+          echo "VERSION=$PKG" >> "$GITHUB_ENV"
+
+      # publish runs prepublishOnly (typecheck + test + build) as the release gate.
+      # --provenance attaches the OIDC attestation; --access public for the scoped pkg.
+      - name: Publish to npm with provenance
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # `npm publish` set the `latest` dist-tag. While pre-GA, also point `beta` at this
+      # release so `@beta` tracks the newest prerelease. Skipped for stable (no `-`) versions.
+      - name: Keep `beta` dist-tag current (prereleases only)
+        if: contains(env.VERSION, '-')
+        run: npm dist-tag add "@wefunder/sdk@${VERSION}" beta
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
