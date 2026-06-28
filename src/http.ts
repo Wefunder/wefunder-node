@@ -56,15 +56,6 @@ function backoffMs(attempt: number, opts: Required<RetryOptions>, random: () => 
   return Math.min(exp + jitter, opts.maxDelayMs);
 }
 
-/** Apply a fresh bearer token to a cloned request for the post-refresh retry. */
-function withBearer(input: FetchInput, init: RequestInit | undefined, token: string): RequestInit {
-  const headers = new Headers(
-    init?.headers ?? (input instanceof Request ? input.headers : undefined),
-  );
-  headers.set("Authorization", `Bearer ${token}`);
-  return { ...init, headers };
-}
-
 export function createFetch(deps: HttpDeps): typeof fetch {
   const baseFetch = deps.fetch ?? fetch;
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
@@ -79,28 +70,51 @@ export function createFetch(deps: HttpDeps): typeof fetch {
   return async function wrappedFetch(input: FetchInput, init?: RequestInit): Promise<Response> {
     const method = methodOf(input, init);
     const idempotent = IDEMPOTENT.has(method);
+    const isRequest = input instanceof Request;
     let refreshed = false;
     let attempt = 0;
+    let retryToken: string | undefined; // set after a refresh, applied to the next attempt
+
+    // Issue the request for one attempt. CRITICAL: a `Request` body is a single-use
+    // stream — the hey-api client hands us a `Request`, and the first fetch consumes
+    // it, so we must NOT re-dispatch the same object on a retry. Clone per attempt
+    // (leaving `input` pristine), overriding the bearer after a refresh. For the
+    // (url, init) form, a string body is freely re-sendable.
+    const dispatch = (authToken?: string): Promise<Response> => {
+      if (isRequest) {
+        const fresh = (input as Request).clone();
+        if (authToken === undefined) return baseFetch(fresh);
+        const headers = new Headers(fresh.headers);
+        headers.set("Authorization", `Bearer ${authToken}`);
+        return baseFetch(new Request(fresh, { headers }));
+      }
+      const nextInit =
+        authToken === undefined
+          ? init
+          : (() => {
+              const headers = new Headers(init?.headers);
+              headers.set("Authorization", `Bearer ${authToken}`);
+              return { ...init, headers };
+            })();
+      return baseFetch(input, nextInit);
+    };
 
     for (;;) {
       let response: Response | undefined;
       let networkError: unknown;
       try {
-        response = await baseFetch(input, init);
+        response = await dispatch(retryToken);
       } catch (err) {
         networkError = err;
       }
 
-      // --- 401: refresh once, then retry (any method — a 401 means the request
-      // was rejected before processing, so re-sending is safe). The hey-api client
-      // calls us with (url, init) where init.body is a string, so the retry can
-      // re-send the body freely. Guard the one unsafe case: a `Request` whose body
-      // stream was already consumed can't be replayed — skip the retry there.
-      const replayable = !(input instanceof Request && input.bodyUsed);
-      if (response?.status === 401 && !refreshed && replayable && deps.tokenManager?.canRefresh) {
+      // --- 401: refresh once, then retry (any method — a 401 means the request was
+      // rejected before processing, so re-sending is safe; the per-attempt clone makes
+      // body-bearing writes replayable). ---
+      if (response?.status === 401 && !refreshed && deps.tokenManager?.canRefresh) {
         refreshed = true;
         const next = await deps.tokenManager.refresh();
-        init = withBearer(input, init, next.accessToken);
+        retryToken = next.accessToken;
         continue;
       }
 
