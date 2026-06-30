@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    // Resolve the public package specifier to local source, so guide snippets can show
+    // the authentic `import { Wefunder } from "@wefunder/sdk"` yet type-check in-repo.
+    "baseUrl": ".",
+    "paths": { "@wefunder/sdk": ["src/index.ts"] }
+  },
+  "include": ["examples"],
+  // Framework-integration scripts (express, etc.) are runnable illustrations, not SDK-only
+  // doc snippets — keep their heavy deps out of the SDK's devDeps. Gate them separately when
+  // guide pages are wired (add express/@types/express, or relocate to examples/integrations).
+  "exclude": ["examples/oauth-pkce-server.ts", "examples/webhook-receiver.ts"]
+}

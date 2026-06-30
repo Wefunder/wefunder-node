@@ -1,0 +1,16 @@
+{
+  "manifestVersion": 1,
+  "lang": "JavaScript",
+  "label": "@wefunder/sdk",
+  "sdkVersion": "0.1.0-beta.5",
+  "apiVersion": "2025-01-15",
+  "generatedBy": "scripts/build-examples-manifest.mjs",
+  "samples": {
+    "createWebhookSubscription": "const subscription = await wf.unwrap(\n  wf.raw.createWebhookSubscription({\n    path: { campaign_id: 1234 },\n    body: {\n      target_url: \"https://example.com/wefunder/webhooks\",\n      events: [\"investment.confirmed\", \"investment.canceled\"],\n    },\n  }),\n);\nconsole.log(subscription);",
+    "getCurrentUser": "const me = await wf.users.me();\nconsole.log(\"Logged in as\", me.id);",
+    "getOffering": "const offering = await wf.offerings.get(\"ofr_QfmTyP8qjfYAvkEgREyL3kLf\");\nconsole.log(offering.attributes?.company_name, offering.attributes?.state);",
+    "guides/client-credentials": "const wf = await Wefunder.fromClientCredentials({\n  clientId: process.env.WEFUNDER_CLIENT_ID!,\n  clientSecret: process.env.WEFUNDER_CLIENT_SECRET!,\n  scopes: [\"read:public\"],\n});\n\nconsole.log(\"mode:\", wf.mode); // \"live\" or \"test\", from the token prefix\n\n// client_credentials holds only read:public — browse public offerings.\n// (wf.users.me() would throw 403 insufficient_scope: it needs read:profile.)\nfor await (const offering of wf.offerings.all()) {\n  console.log(offering.id);\n}",
+    "listInvestments": "// Auto-paginate the full history lazily:\nfor await (const investment of wf.investments.all()) {\n  console.log(investment.id);\n}\n\n// Or grab one page with its meta (next_cursor, etc.):\nconst page = await wf.investments.list();\nconsole.log(page.data?.length, page.meta?.next_cursor);",
+    "listOfferings": "// Browse live offerings, sorted. The cursor is opaque and handled for you.\nconst page = await wf.offerings.list({ sort: \"most_raised\" });\nfor (const offering of page.data ?? []) {\n  console.log(offering.id, offering.attributes?.company_name);\n}\n\n// Or stream every offering lazily, one page fetched at a time:\nfor await (const offering of wf.offerings.all({ sort: \"newest\" })) {\n  console.log(offering.id);\n}"
+  }
+}
