@@ -3,6 +3,7 @@
 import { Wefunder } from "@wefunder/sdk";
 
 async function main() {
+  // #region guides/client-credentials
   const wf = await Wefunder.fromClientCredentials({
     clientId: process.env.WEFUNDER_CLIENT_ID!,
     clientSecret: process.env.WEFUNDER_CLIENT_SECRET!,
@@ -16,6 +17,7 @@ async function main() {
   for await (const offering of wf.offerings.all()) {
     console.log(offering.id);
   }
+  // #endregion
 }
 
 main().catch((err) => {
