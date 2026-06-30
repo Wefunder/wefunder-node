@@ -102,10 +102,10 @@ const wf = new Wefunder({
 
 OAuth uses two hosts, independently overridable:
 
-- **authorize host** — the browser consent redirect (`createAuthorizationUrl`). Defaults to `https://wefunder.com/oauth`.
-- **token host** — `/token` + refresh (`fromClientCredentials`, `exchangeCode`, refresh). Defaults to `https://wefunder.com/oauth` today; it will move to `https://api.wefunder.com/oauth` when Wefunder's edge gateway ships. Override via `tokenBaseUrl` (or set both at once with `oauthBaseUrl`).
+- **token host** — `/token` + refresh (`fromClientCredentials`, `exchangeCode`, refresh). Defaults to `https://api.wefunder.com/oauth`. The edge gateway routes by the credential's mode (a `pk_test_` grant mints in sandbox, `pk_live_` in live), so one host serves both. Override via `tokenBaseUrl` (or set both with `oauthBaseUrl`).
+- **authorize host** — the browser consent redirect (`createAuthorizationUrl`). Picked from the `client_id`: `pk_test_` → `https://oauth.wefunder-sandbox.com/oauth` (sandbox consent), otherwise `https://wefunder.com/oauth` (live). Override via `authorizeBaseUrl`.
 
-The **API base** is `WefunderOptions.baseUrl` (default `https://api.wefunder.com/api/v2`). When Wefunder ships version-free URLs, the canonical base drops `/api/v2`; the current path stays as a back-compat alias, so no change is required on your side.
+The **API base** is `WefunderOptions.baseUrl` (default `https://api.wefunder.com`, version-free). The API version is pinned by the `Wefunder-Version` header, not the path; `/api/v2` remains a working back-compat alias.
 
 ## Pagination
 

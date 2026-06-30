@@ -7,6 +7,7 @@ import {
   refreshToken,
   DEFAULT_OAUTH_BASE_URL,
   DEFAULT_AUTHORIZE_BASE_URL,
+  SANDBOX_AUTHORIZE_BASE_URL,
   DEFAULT_TOKEN_BASE_URL,
 } from "../src/oauth.js";
 import { makeFetch, json } from "./helpers.js";
@@ -51,7 +52,7 @@ describe("token grants hit the OAuth host with correct params", () => {
       fetch,
       now: () => 1000,
     });
-    expect(calls[0]!.url).toBe(`${DEFAULT_OAUTH_BASE_URL}/token`);
+    expect(calls[0]!.url).toBe(`${DEFAULT_TOKEN_BASE_URL}/token`);
     const params = new URLSearchParams(calls[0]!.body);
     expect(params.get("grant_type")).toBe("client_credentials");
     expect(params.get("client_id")).toBe("cid");
@@ -95,18 +96,36 @@ describe("token grants hit the OAuth host with correct params", () => {
 describe("OAuth host split (#10): authorize host vs token host", () => {
   const tok = () => json({ access_token: "at_test_x" });
 
-  it("defaults: authorize on wefunder.com, token on wefunder.com (transition)", async () => {
+  it("defaults: live authorize on wefunder.com, token on api.wefunder.com (gateway)", async () => {
     expect(DEFAULT_AUTHORIZE_BASE_URL).toBe("https://wefunder.com/oauth");
-    expect(DEFAULT_TOKEN_BASE_URL).toBe("https://wefunder.com/oauth");
+    expect(SANDBOX_AUTHORIZE_BASE_URL).toBe("https://oauth.wefunder-sandbox.com/oauth");
+    expect(DEFAULT_TOKEN_BASE_URL).toBe("https://api.wefunder.com/oauth");
 
+    // A non-pk_test_ client_id authorizes on the live host.
     const url = createAuthorizationUrl({
-      clientId: "c", redirectUri: "https://a/cb", scopes: ["read:public"], state: "s", pkce: generatePkce(),
+      clientId: "pk_live_c", redirectUri: "https://a/cb", scopes: ["read:public"], state: "s", pkce: generatePkce(),
     });
     expect(url.startsWith(`${DEFAULT_AUTHORIZE_BASE_URL}/authorize`)).toBe(true);
 
     const cc = makeFetch(tok);
     await clientCredentialsGrant({ clientId: "c", clientSecret: "s", fetch: cc.fetch });
     expect(cc.calls[0]!.url).toBe(`${DEFAULT_TOKEN_BASE_URL}/token`);
+  });
+
+  it("authorize host is picked by client_id mode: pk_test_ → sandbox, else live", () => {
+    const args = { redirectUri: "https://a/cb", scopes: ["read:public"], state: "s", pkce: generatePkce() };
+    const sandbox = createAuthorizationUrl({ clientId: "pk_test_abc", ...args });
+    const live = createAuthorizationUrl({ clientId: "pk_live_abc", ...args });
+    expect(sandbox.startsWith(`${SANDBOX_AUTHORIZE_BASE_URL}/authorize`)).toBe(true);
+    expect(live.startsWith(`${DEFAULT_AUTHORIZE_BASE_URL}/authorize`)).toBe(true);
+  });
+
+  it("explicit authorizeBaseUrl overrides the pk_test_ sandbox default", () => {
+    const url = createAuthorizationUrl({
+      clientId: "pk_test_abc", redirectUri: "https://a/cb", scopes: ["x"], state: "s", pkce: generatePkce(),
+      authorizeBaseUrl: "https://login.example/oauth",
+    });
+    expect(url.startsWith("https://login.example/oauth/authorize")).toBe(true);
   });
 
   it("tokenBaseUrl overrides ONLY the token host (authorize unaffected)", async () => {

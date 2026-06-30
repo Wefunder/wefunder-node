@@ -26,7 +26,10 @@ import type {
 /** Documented `sort` values for the offerings list, from the generated op. */
 export type OfferingSort = NonNullable<ListOfferingsData["query"]>["sort"];
 
-export const DEFAULT_API_BASE_URL = "https://api.wefunder.com/api/v2";
+// Version-free base — the edge gateway serves the API at the host root; `/api/v2`
+// remains a working back-compat alias. The API version is pinned via the
+// `Wefunder-Version` header (DEFAULT_API_VERSION), not the path.
+export const DEFAULT_API_BASE_URL = "https://api.wefunder.com";
 export const DEFAULT_API_VERSION = "2025-01-15";
 
 export type Mode = "live" | "test" | "unknown";
