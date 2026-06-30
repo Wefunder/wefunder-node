@@ -2,25 +2,31 @@
 //  - BOTH authorization_code + PKCE (user flows) AND client_credentials (server, read:public)
 //  - refresh tokens ROTATE: every refresh returns a NEW refresh token that MUST be persisted
 //
-// HOST SPLIT (review #10): /authorize and /token are splitting by purpose.
-//  - /authorize stays on wefunder.com (browser consent — needs the human session).
-//  - /token (+ refresh) is moving to api.wefunder.com once the edge gateway ships;
-//    sandbox (pk_test_) minting will then REQUIRE the API host (only the gateway can
-//    route by credential prefix). Until that ships, both default to wefunder.com/oauth.
-// The two hosts are independently overridable; flipping the token default later is a
-// one-line change (see DEFAULT_TOKEN_BASE_URL).
+// HOST SPLIT: /authorize and /token live on different hosts by purpose.
+//  - /token (+ refresh) is on api.wefunder.com — the edge gateway routes by the
+//    credential's mode segment (form-body client_id for /oauth/token), so a pk_test_
+//    grant mints in the sandbox cluster and a pk_live_ grant in live. ONE token host
+//    for both modes; do NOT route by prefix here. (wefunder.com/oauth/token still works
+//    as a transition alias but mints into live — wrong for sandbox once the gateway is
+//    in front of the API, so we default to the gateway host.)
+//  - /authorize is the browser consent redirect (needs the human session). Live consent
+//    is on wefunder.com; sandbox (pk_test_) consent is on the canonical sandbox host
+//    oauth.wefunder-sandbox.com. createAuthorizationUrl picks by client_id prefix.
+// All hosts remain independently overridable (authorizeBaseUrl / tokenBaseUrl).
 //
 // These helpers are framework-agnostic and depend only on Web Crypto + fetch (Node 18+).
 
 import { createHash, randomBytes } from "node:crypto";
 
-/** Host for the browser /authorize redirect. Stays on wefunder.com. */
+/** Host for the LIVE browser /authorize redirect (pk_live_ / default). */
 export const DEFAULT_AUTHORIZE_BASE_URL = "https://wefunder.com/oauth";
 
-// Host for /token (+ refresh). FLIP-POINT: change to "https://api.wefunder.com/oauth"
-// when the edge gateway ships (required for sandbox token minting). Keep wefunder.com
-// working as a transition alias — callers can override via `tokenBaseUrl`.
-export const DEFAULT_TOKEN_BASE_URL = "https://wefunder.com/oauth";
+/** Host for the SANDBOX browser /authorize redirect (pk_test_). Canonical, client_id-derivable. */
+export const SANDBOX_AUTHORIZE_BASE_URL = "https://oauth.wefunder-sandbox.com/oauth";
+
+// Host for /token (+ refresh). The edge gateway routes test/live by the client_id mode,
+// so one host serves both. Callers can override via `tokenBaseUrl`.
+export const DEFAULT_TOKEN_BASE_URL = "https://api.wefunder.com/oauth";
 
 /**
  * @deprecated Use `authorizeBaseUrl` / `tokenBaseUrl` instead. Kept as a convenience
@@ -38,8 +44,9 @@ export interface OAuthHostOptions {
   tokenBaseUrl?: string;
 }
 
-function resolveAuthorizeBase(o: OAuthHostOptions): string {
-  return o.authorizeBaseUrl ?? o.oauthBaseUrl ?? DEFAULT_AUTHORIZE_BASE_URL;
+/** The default authorize host for a client_id: sandbox host for pk_test_, else live. */
+function defaultAuthorizeBase(clientId: string): string {
+  return clientId.startsWith("pk_test_") ? SANDBOX_AUTHORIZE_BASE_URL : DEFAULT_AUTHORIZE_BASE_URL;
 }
 
 export function resolveTokenBase(o: OAuthHostOptions): string {
@@ -126,7 +133,9 @@ export interface AuthorizationUrlOptions extends OAuthHostOptions {
 
 /** Build the URL to redirect a user to for the authorization_code + PKCE flow. */
 export function createAuthorizationUrl(opts: AuthorizationUrlOptions): string {
-  const base = resolveAuthorizeBase(opts);
+  // Explicit override wins; otherwise pick the host from the client_id mode
+  // (pk_test_ → sandbox consent host, else live). The token host is separate.
+  const base = opts.authorizeBaseUrl ?? opts.oauthBaseUrl ?? defaultAuthorizeBase(opts.clientId);
   const q = new URLSearchParams({
     response_type: "code",
     client_id: opts.clientId,

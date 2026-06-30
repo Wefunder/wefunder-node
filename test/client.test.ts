@@ -17,8 +17,9 @@ describe("mode detection (UX only — never used for host routing)", () => {
     const { fetch, calls } = makeFetch(() => json({ data: { id: 1 } }));
     const wf = new Wefunder({ accessToken: "at_test_x", fetch });
     await wf.users.me();
-    // host is api.wefunder.com even for a test token — proxy routes by prefix
-    expect(calls[0]!.url).toContain("https://api.wefunder.com/api/v2");
+    // host is api.wefunder.com even for a test token — the gateway routes by prefix.
+    // Version-free base: /users/me, not /api/v2/users/me.
+    expect(calls[0]!.url).toBe("https://api.wefunder.com/users/me");
   });
 });
 
