@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "lang": "JavaScript",
   "label": "@wefunder/sdk",
-  "sdkVersion": "0.1.0-beta.5",
+  "sdkVersion": "0.1.0-beta.6",
   "apiVersion": "2025-01-15",
   "generatedBy": "scripts/build-examples-manifest.mjs",
   "samples": {
