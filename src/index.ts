@@ -8,6 +8,7 @@ export {
   type WefunderOptions,
   type Mode,
   type OfferingSort,
+  type IntentStatus,
 } from "./client.js";
 
 export { WefunderError, WefunderAuthError, REQUEST_ID_HEADER } from "./errors.js";
