@@ -21,10 +21,13 @@ import type {
   Intent,
   AttributionMe,
   ListOfferingsData,
+  ListIntentsData,
 } from "./generated/types.gen.js";
 
 /** Documented `sort` values for the offerings list, from the generated op. */
 export type OfferingSort = NonNullable<ListOfferingsData["query"]>["sort"];
+/** Documented `status` filter values for the intents list, from the generated op. */
+export type IntentStatus = NonNullable<ListIntentsData["query"]>["status"];
 
 // Version-free base — the edge gateway serves the API at the host root; `/api/v2`
 // remains a working back-compat alias. The API version is pinned via the
@@ -266,15 +269,24 @@ export class Wefunder {
   };
 
   syndicates = {
-    list: this.#page<Syndicate>(ops.listSyndicates as never),
-    all: (): AsyncGenerator<Syndicate> => paginate((cursor) => this.syndicates.list({ cursor })),
+    list: this.#page<Syndicate, { cursor?: Cursor; limit?: number }>(ops.listSyndicates as never),
+    all: (query?: { limit?: number }): AsyncGenerator<Syndicate> =>
+      paginate((cursor) => this.syndicates.list({ ...query, cursor })),
     get: (id: number | string) =>
       this.#unwrapData<Syndicate>(ops.getSyndicate({ client: this.#client, path: { id } as never })),
   };
 
   intents = {
-    list: this.#page<Intent>(ops.listIntents as never),
-    all: (): AsyncGenerator<Intent> => paginate((cursor) => this.intents.list({ cursor })),
+    list: this.#page<
+      Intent,
+      { cursor?: Cursor; status?: IntentStatus; resource_type?: string; resource_id?: number; limit?: number }
+    >(ops.listIntents as never),
+    all: (query?: {
+      status?: IntentStatus;
+      resource_type?: string;
+      resource_id?: number;
+      limit?: number;
+    }): AsyncGenerator<Intent> => paginate((cursor) => this.intents.list({ ...query, cursor })),
     get: (id: number | string) =>
       this.#unwrapData<Intent>(ops.getIntent({ client: this.#client, path: { id } as never })),
   };
