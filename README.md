@@ -191,25 +191,39 @@ await saveSecret(endpoint.attributes!.secret!);
 Pass the raw request body, the request headers, and your secret to `constructEvent`. It throws `WebhookSignatureError` (with a `reason`) when a delivery is not authentic.
 
 ```ts
-import { constructEvent, dispatchWebhook, WebhookSignatureError } from "@wefunder/sdk";
+import {
+  constructEvent,
+  dispatchWebhook,
+  WebhookSignatureError,
+} from "@wefunder/sdk";
 
-app.post("/webhooks/wefunder", express.raw({ type: "*/*" }), async (req, res) => {
-  let event;
-  try {
-    event = constructEvent(req.body, req.headers, process.env.WEFUNDER_WEBHOOK_SECRET!);
-  } catch (err) {
-    if (err instanceof WebhookSignatureError) return res.status(400).send(err.reason);
-    throw err;
-  }
+app.post(
+  "/webhooks/wefunder",
+  express.raw({ type: "*/*" }),
+  async (req, res) => {
+    let event;
+    try {
+      event = constructEvent(
+        req.body,
+        req.headers,
+        process.env.WEFUNDER_WEBHOOK_SECRET!,
+      );
+    } catch (err) {
+      if (err instanceof WebhookSignatureError)
+        return res.status(400).send(err.reason);
+      throw err;
+    }
 
-  res.sendStatus(200); // acknowledge first, then do the work
+    res.sendStatus(200); // acknowledge first, then do the work
 
-  await dispatchWebhook(event, {
-    "investment.executed": async (e) => recordFunding(e.data.id, e.data.amounts.committed),
-    "offering.opened": async (e) => announce(e.data.company.name),
-    default: (e) => console.log("unhandled", e.event),
-  });
-});
+    await dispatchWebhook(event, {
+      "investment.executed": async (e) =>
+        recordFunding(e.data.id, e.data.amounts.committed),
+      "offering.opened": async (e) => announce(e.data.company.name),
+      default: (e) => console.log("unhandled", e.event),
+    });
+  },
+);
 ```
 
 `event` is a discriminated union, so narrowing on `event.event` types `event.data` for you. For fetch-style servers (Next.js route handlers, Hono, Cloudflare Workers), use `constructEventFromRequest(request, secret)` instead.
@@ -249,6 +263,39 @@ const members = await wf.unwrap(
 ```
 
 Raw operations return `{ data, error, response }`. Passing the result to `wf.unwrap()` applies the same error handling used by the resource namespaces.
+
+## Escape hatch: `wf.request` (any path)
+
+For endpoints outside the generated surface entirely — preview-tier operations
+(e.g. partner SPVs) or operations newer than your installed SDK version —
+`wf.request()` calls any API path with the SDK's full envelope: bearer auth
+(including refresh / client_credentials re-mint on 401), the pinned
+`Wefunder-Version` header, the retry policy, and a typed `WefunderError` on
+failure. It is untyped by design; preview endpoints can change at any time.
+
+```ts
+// GET with query params
+const spvs = await wf.request("GET", "/partner/spvs", { query: { limit: 10 } });
+
+// POST with a JSON body and an idempotency key
+const session = await wf.request(
+  "POST",
+  `/partner/spvs/${spvId}/investment_sessions`,
+  {
+    body: {
+      investment_session: {
+        email: "alex@example.com",
+        allocation_cents: 500_000,
+      },
+    },
+    headers: { "Idempotency-Key": "invite-alex-1" },
+  },
+);
+```
+
+The returned body is passed through as-is (no `{ data }` unwrapping — envelope
+shapes vary across unshipped endpoints). When an operation graduates to the
+generated surface, switch to `wf.raw.<opId>` (typed) or its namespace method.
 
 ## Development
 
