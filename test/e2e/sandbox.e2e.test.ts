@@ -76,6 +76,21 @@ describe.skipIf(!hasCreds)("live sandbox E2E", () => {
     );
   }, 30_000);
 
+  it("wf.request() hits an arbitrary path with the same auth + error envelope", async () => {
+    // Same endpoint the generated listOfferings op uses, but via the untyped
+    // escape hatch — proves auth attach + query serialization live.
+    const out = await wf.request<{ data: unknown[]; meta: unknown }>("GET", "/explore", {
+      query: { limit: 5 },
+    });
+    expect(Array.isArray(out.data)).toBe(true);
+    expect(out.meta).toBeDefined();
+
+    // And a bogus path surfaces a typed WefunderError, not a raw throw.
+    const err = await wf.request("GET", "/definitely-not-an-endpoint").catch((e) => e);
+    expect(err).toBeInstanceOf(WefunderError);
+    expect((err as WefunderError).status).toBeGreaterThanOrEqual(400);
+  }, 30_000);
+
   it("rejects a read:profile call with a typed 403 that carries a request_id (nested-parse)", async () => {
     // users/me requires read:profile; a client_credentials token can't have it.
     // This also proves we parse request_id from the REAL nested `error.request_id`.

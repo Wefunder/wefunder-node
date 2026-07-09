@@ -29,6 +29,19 @@ export type OfferingSort = NonNullable<ListOfferingsData["query"]>["sort"];
 /** Documented `status` filter values for the intents list, from the generated op. */
 export type IntentStatus = NonNullable<ListIntentsData["query"]>["status"];
 
+/** HTTP methods accepted by the `request` escape hatch. */
+export type RequestMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
+
+/** Options for the `request` escape hatch. */
+export interface RawRequestOptions {
+  /** Query params, serialized the same way generated ops serialize theirs. */
+  query?: Record<string, unknown>;
+  /** JSON request body (sets `Content-Type: application/json` unless overridden). */
+  body?: unknown;
+  /** Extra headers (e.g. `Idempotency-Key`), merged over the SDK defaults. */
+  headers?: Record<string, string>;
+}
+
 // Version-free base — the edge gateway serves the API at the host root; `/api/v2`
 // remains a working back-compat alias. The API version is pinned via the
 // `Wefunder-Version` header (DEFAULT_API_VERSION), not the path.
@@ -227,6 +240,40 @@ export class Wefunder {
    */
   unwrap<T>(p: Result<T>): Promise<T> {
     return this.#unwrap(p);
+  }
+
+  /**
+   * Untyped escape hatch: call ANY API path with the SDK's full envelope —
+   * bearer auth (incl. refresh / client_credentials re-mint on 401), the pinned
+   * `Wefunder-Version` header, the retry policy, and a typed `WefunderError` on
+   * failure. For endpoints outside the generated surface: preview-tier ops
+   * (e.g. partner SPVs) or ops newer than this SDK build.
+   *
+   * `path` is relative to the client's `baseUrl` (e.g. `"/partner/spvs"`).
+   * Returns the raw response body (no `{ data }` unwrapping — envelopes vary
+   * across unshipped endpoints).
+   */
+  async request<T = unknown>(
+    method: RequestMethod,
+    path: string,
+    opts: RawRequestOptions = {},
+  ): Promise<T> {
+    return this.#unwrap<T>(
+      this.#client.request({
+        method,
+        url: path,
+        // Same security descriptor the generated ops pass — this is what makes
+        // the client attach (and on 401, refresh/re-mint) the bearer token.
+        security: [{ scheme: "bearer", type: "http" }],
+        query: opts.query,
+        body: opts.body,
+        // JSON by default when a body is present; caller headers win.
+        headers:
+          opts.body !== undefined
+            ? { "Content-Type": "application/json", ...opts.headers }
+            : opts.headers,
+      }) as Result<T>,
+    );
   }
 
   // Generic page helper: forwards the endpoint's full query (cursor + documented
