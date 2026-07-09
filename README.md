@@ -186,6 +186,30 @@ const members = await wf.unwrap(wf.raw.listSyndicateMembers({ path: { syndicate_
 const res = await wf.raw.listSyndicateMembers({ path: { syndicate_id: 1 } });
 ```
 
+## Escape hatch: `wf.request` (any path)
+
+For endpoints outside the generated surface entirely — preview-tier operations
+(e.g. partner SPVs) or operations newer than your installed SDK version —
+`wf.request()` calls any API path with the SDK's full envelope: bearer auth
+(including refresh / client_credentials re-mint on 401), the pinned
+`Wefunder-Version` header, the retry policy, and a typed `WefunderError` on
+failure. It is untyped by design; preview endpoints can change at any time.
+
+```ts
+// GET with query params
+const spvs = await wf.request("GET", "/partner/spvs", { query: { limit: 10 } });
+
+// POST with a JSON body and an idempotency key
+const session = await wf.request("POST", `/partner/spvs/${spvId}/investment_sessions`, {
+  body: { investment_session: { email: "alex@example.com", allocation_cents: 500_000 } },
+  headers: { "Idempotency-Key": "invite-alex-1" },
+});
+```
+
+The returned body is passed through as-is (no `{ data }` unwrapping — envelope
+shapes vary across unshipped endpoints). When an operation graduates to the
+generated surface, switch to `wf.raw.<opId>` (typed) or its namespace method.
+
 ## Development
 
 ```bash
