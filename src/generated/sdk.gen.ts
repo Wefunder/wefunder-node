@@ -14,6 +14,7 @@ import type {
   ApproveSyndicateMemberResponses,
   CloseSyndicateDealData,
   CloseSyndicateDealErrors,
+  CloseSyndicateDealResponses,
   CreateIntentData,
   CreateIntentErrors,
   CreateIntentResponses,
@@ -34,6 +35,7 @@ import type {
   ExportSyndicateMembersCsvResponses,
   FinalizeSyndicateDealData,
   FinalizeSyndicateDealErrors,
+  FinalizeSyndicateDealResponses,
   GetAttributionMeData,
   GetAttributionMeErrors,
   GetAttributionMeResponses,
@@ -49,11 +51,17 @@ import type {
   GetOfferingData,
   GetOfferingErrors,
   GetOfferingResponses,
+  GetPortfolioData,
+  GetPortfolioErrors,
+  GetPortfolioResponses,
   GetSyndicateData,
   GetSyndicateDealData,
   GetSyndicateDealErrors,
   GetSyndicateDealResponses,
   GetSyndicateErrors,
+  GetSyndicatePortfolioData,
+  GetSyndicatePortfolioErrors,
+  GetSyndicatePortfolioResponses,
   GetSyndicateResponses,
   GetSyndicateStatisticsData,
   GetSyndicateStatisticsErrors,
@@ -94,6 +102,9 @@ import type {
   ListPartnerInvitesData,
   ListPartnerInvitesErrors,
   ListPartnerInvitesResponses,
+  ListPortfolioPositionsData,
+  ListPortfolioPositionsErrors,
+  ListPortfolioPositionsResponses,
   ListSyndicateDealInvestorsData,
   ListSyndicateDealInvestorsErrors,
   ListSyndicateDealInvestorsResponses,
@@ -106,6 +117,9 @@ import type {
   ListSyndicateMembersData,
   ListSyndicateMembersErrors,
   ListSyndicateMembersResponses,
+  ListSyndicatePortfolioPositionsData,
+  ListSyndicatePortfolioPositionsErrors,
+  ListSyndicatePortfolioPositionsResponses,
   ListSyndicatesData,
   ListSyndicatesErrors,
   ListSyndicatesResponses,
@@ -175,8 +189,8 @@ export type Options<
  *
  * Returns the offerings shown on wefunder.com/explore — the curated set of companies that
  * meet Wefunder's discoverability bar (a soft-confirmed traction threshold plus approval),
- * **one offering per company**. An "offering" is a fundraise, addressed by its `ofr_`
- * external id.
+ * **one offering per company**. An "offering" is a fundraise, addressed by its id
+ * (`ofr_...`).
  *
  * This is a public, read-only endpoint backed by the `read:public` scope. It is reachable
  * with either a server-side (client_credentials) token or a user access token carrying
@@ -207,7 +221,7 @@ export const listOfferings = <ThrowOnError extends boolean = false>(
 /**
  * Get a public offering
  *
- * Retrieves a single public offering by its `ofr_` external id.
+ * Retrieves a single public offering by its id (`ofr_...`).
  *
  * A valid id for a non-public offering (e.g. a private Reg D 506(b) round) returns `404` —
  * having an id does not make an offering publicly resolvable.
@@ -283,6 +297,71 @@ export const listInvestments = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/investments",
+    ...options,
+  });
+
+/**
+ * Get portfolio summary
+ *
+ * Returns totals across the authenticated investor's portfolio: cost basis,
+ * current value, realized and unrealized gains, and per-status position counts.
+ * Accepts the same `status` and `company` filters as `GET /portfolio/positions`
+ * to total a slice of the portfolio, such as only exited positions.
+ *
+ * Requires a user-authorized token. App-only (client credentials) tokens
+ * receive 403.
+ *
+ * Portfolio values are recalculated periodically rather than on each request,
+ * so recent investments and valuation changes can take a few minutes to appear.
+ * `as_of` is the timestamp of the oldest calculation included in the response.
+ *
+ * Monetary values are **integer cents**; per-share prices and return multiples
+ * are **decimal strings**.
+ *
+ */
+export const getPortfolio = <ThrowOnError extends boolean = false>(
+  options?: Options<GetPortfolioData, ThrowOnError>,
+): RequestResult<GetPortfolioResponses, GetPortfolioErrors, ThrowOnError> =>
+  (options?.client ?? client).get<
+    GetPortfolioResponses,
+    GetPortfolioErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/portfolio",
+    ...options,
+  });
+
+/**
+ * List portfolio positions
+ *
+ * Returns the authenticated investor's positions, one per offering
+ * (fundraise), newest first. Position totals cover everything the investor
+ * holds in that offering; `securities` breaks the total down by security
+ * offering and legal owner, so early bird tiers and personally-held vs
+ * entity-held stakes each appear separately. Fund and SPV positions identify
+ * the companies the vehicle invested in under `holdings`.
+ *
+ * To compute an average cost per share, divide `cost_basis_cents` by
+ * `shares_held`.
+ *
+ * Requires a user-authorized token, like `GET /portfolio`.
+ *
+ */
+export const listPortfolioPositions = <ThrowOnError extends boolean = false>(
+  options?: Options<ListPortfolioPositionsData, ThrowOnError>,
+): RequestResult<
+  ListPortfolioPositionsResponses,
+  ListPortfolioPositionsErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    ListPortfolioPositionsResponses,
+    ListPortfolioPositionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/portfolio/positions",
     ...options,
   });
 
@@ -792,18 +871,95 @@ export const getSyndicateStatistics = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * Close deal (requires intent)
+ * Get syndicate portfolio summary
+ *
+ * Returns totals across the syndicate's portfolio: cost basis, current value,
+ * gains, per-status deal counts, and the number of distinct investors.
+ * Accepts the same `status` and `company` filters as the positions endpoint
+ * to total a slice of the portfolio, such as only exited deals.
+ *
+ * The summary covers the syndicate's funded deals, summed across everyone
+ * holding their securities (not just current members), as aggregate figures
+ * only. Member-level data is available on the members endpoints.
+ *
+ * Portfolio values are recalculated periodically rather than on each request,
+ * so recent investments and valuation changes can take a few minutes to appear.
+ * `as_of` is the timestamp of the oldest calculation included in the response.
+ *
+ * Monetary values are **integer cents**; per-share prices and return multiples
+ * are **decimal strings**.
+ *
+ */
+export const getSyndicatePortfolio = <ThrowOnError extends boolean = false>(
+  options: Options<GetSyndicatePortfolioData, ThrowOnError>,
+): RequestResult<
+  GetSyndicatePortfolioResponses,
+  GetSyndicatePortfolioErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetSyndicatePortfolioResponses,
+    GetSyndicatePortfolioErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/syndicates/{syndicate_id}/portfolio",
+    ...options,
+  });
+
+/**
+ * List syndicate portfolio positions
+ *
+ * Returns the syndicate's portfolio one deal at a time, newest first. Each
+ * position is one fundraise ("offering"), aggregated across everyone holding
+ * its securities, with `investor_count` at both the position and security
+ * level.
+ *
+ * `securities` breaks each position down by security offering (for example,
+ * an early bird tier vs the regular terms) — most deals have a single entry.
+ * Fund and SPV deals identify the companies the vehicle invested in under
+ * `holdings`; some older vehicles have no recorded holdings and return an
+ * empty array.
+ *
+ */
+export const listSyndicatePortfolioPositions = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<ListSyndicatePortfolioPositionsData, ThrowOnError>,
+): RequestResult<
+  ListSyndicatePortfolioPositionsResponses,
+  ListSyndicatePortfolioPositionsErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    ListSyndicatePortfolioPositionsResponses,
+    ListSyndicatePortfolioPositionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/syndicates/{syndicate_id}/portfolio/positions",
+    ...options,
+  });
+
+/**
+ * Close deal
  *
  * Closing a deal is irreversible and requires human approval through the Intent system.
- * This endpoint always returns 422 with a `use_intents` error directing you to
- * `POST /v2/intents` with action `syndicates.close_deal`.
+ * This endpoint server-mints a pending `syndicates.close_deal` intent and returns the deal
+ * under `data` plus the intent's `review_url` under `meta.close_deal_intent`. The deal is
+ * not transitioned until a permitted human approves the intent in the Wefunder UI.
+ * Idempotent: a repeated call returns the same pending intent rather than minting a duplicate.
  *
  */
 export const closeSyndicateDeal = <ThrowOnError extends boolean = false>(
   options: Options<CloseSyndicateDealData, ThrowOnError>,
-): RequestResult<unknown, CloseSyndicateDealErrors, ThrowOnError> =>
+): RequestResult<
+  CloseSyndicateDealResponses,
+  CloseSyndicateDealErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
-    unknown,
+    CloseSyndicateDealResponses,
     CloseSyndicateDealErrors,
     ThrowOnError
   >({
@@ -813,18 +969,24 @@ export const closeSyndicateDeal = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * Finalize deal (requires intent)
+ * Finalize deal
  *
- * Finalizing a deal triggers disbursement and is irreversible. It requires human approval
- * through the Intent system. This endpoint always returns 422 with a `use_intents` error
- * directing you to `POST /v2/intents` with action `syndicates.finalize_deal`.
+ * Finalizing a deal is irreversible and requires human approval through the Intent system.
+ * This endpoint server-mints a pending `syndicates.finalize_deal` intent and returns the
+ * deal under `data` plus the intent's `review_url` under `meta.finalize_deal_intent`. The
+ * finalize runs only when a permitted human approves the intent in the Wefunder UI.
+ * Idempotent: a repeated call returns the same pending intent rather than minting a duplicate.
  *
  */
 export const finalizeSyndicateDeal = <ThrowOnError extends boolean = false>(
   options: Options<FinalizeSyndicateDealData, ThrowOnError>,
-): RequestResult<unknown, FinalizeSyndicateDealErrors, ThrowOnError> =>
+): RequestResult<
+  FinalizeSyndicateDealResponses,
+  FinalizeSyndicateDealErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
-    unknown,
+    FinalizeSyndicateDealResponses,
     FinalizeSyndicateDealErrors,
     ThrowOnError
   >({

@@ -232,8 +232,16 @@ export type IntentListEnvelope = {
   meta?: PaginationMeta;
 };
 
-export type InvestmentLinkEnvelope = {
-  data?: InvestmentLink;
+/**
+ * Lightweight handle to a pending intent a permitted human must approve for the action to take effect. The full intent is not readable through this API; the review_url is the approval link. Returned under `meta.<action>_intent` by the endpoints that server-mint an intent (partner SPV close/cancel, syndicate deal close/finalize).
+ */
+export type IntentReview = {
+  /**
+   * The intent's id (Intent has a UUID primary key).
+   */
+  id?: string;
+  status?: string;
+  review_url?: string;
 };
 
 export type InvestmentListEnvelope = {
@@ -243,6 +251,19 @@ export type InvestmentListEnvelope = {
 
 export type InvestmentSessionEnvelope = {
   data?: InvestmentSession;
+  meta?: {
+    request_id?: string;
+  };
+};
+
+export type InvestmentSessionListEnvelope = {
+  data?: Array<InvestmentSession>;
+  meta?: {
+    has_more?: boolean;
+    page_count?: number;
+    request_id?: string;
+    next_cursor?: number | null;
+  };
 };
 
 export type InvestorEnvelope = {
@@ -254,13 +275,21 @@ export type InvestorListEnvelope = {
   meta?: PaginationMeta;
 };
 
-export type InviteEnvelope = {
-  data?: Invite;
+export type InviteLinkEnvelope = {
+  data?: InviteLink;
+  meta?: {
+    request_id?: string;
+  };
 };
 
-export type InviteListEnvelope = {
-  data?: Array<Invite>;
-  meta?: PaginationMeta;
+export type InviteLinkListEnvelope = {
+  data?: Array<InviteLink>;
+  meta?: {
+    has_more?: boolean;
+    page_count?: number;
+    request_id?: string;
+    next_cursor?: number | null;
+  };
 };
 
 export type MarketingPartnerEnvelope = {
@@ -280,6 +309,11 @@ export type PartnerInvestmentListEnvelope = {
   meta?: PaginationMeta;
 };
 
+export type PartnerInvestorListEnvelope = {
+  data?: Array<PartnerInvestor>;
+  meta?: PaginationMeta;
+};
+
 export type PartnerInviteEnvelope = {
   data?: PartnerInvite;
 };
@@ -296,12 +330,35 @@ export type PartnerWebhookSubscriptionWithSecretEnvelope = {
   data?: PartnerWebhookSubscriptionWithSecret;
 };
 
-export type SpvCloseStatusEnvelope = {
-  data?: SpvCloseStatus;
+export type SpvStatusEnvelope = {
+  data?: SpvStatus;
+  meta?: {
+    request_id?: string;
+  };
 };
 
 export type SpvEnvelope = {
   data?: Spv;
+};
+
+/**
+ * The SPV plus the pending disburse_funds intent an advisor approves to finalize the close.
+ */
+export type SpvCloseIntentEnvelope = {
+  data?: Spv;
+  meta?: {
+    disburse_intent?: IntentReview;
+  };
+};
+
+/**
+ * The SPV plus the pending cancel intent an advisor approves to abort the raise and refund investors.
+ */
+export type SpvCancelIntentEnvelope = {
+  data?: Spv;
+  meta?: {
+    cancel_intent?: IntentReview;
+  };
 };
 
 export type SpvListEnvelope = {
@@ -315,6 +372,26 @@ export type SyndicateDealDetailEnvelope = {
 
 export type SyndicateDealEnvelope = {
   data?: SyndicateDeal;
+};
+
+/**
+ * The deal plus the pending close_deal intent a permitted human approves to close it.
+ */
+export type SyndicateDealCloseIntentEnvelope = {
+  data?: SyndicateDeal;
+  meta?: {
+    close_deal_intent?: IntentReview;
+  };
+};
+
+/**
+ * The deal plus the pending finalize_deal intent a permitted human approves to finalize it.
+ */
+export type SyndicateDealFinalizeIntentEnvelope = {
+  data?: SyndicateDeal;
+  meta?: {
+    finalize_deal_intent?: IntentReview;
+  };
 };
 
 export type SyndicateDetailEnvelope = {
@@ -348,14 +425,14 @@ export type WebhookSubscriptionEnvelope = {
 };
 
 /**
- * A public offering (a fundraise), addressed by its `ofr_` external id. Returned by the
+ * A public offering (a fundraise), addressed by its id (`ofr_...`). Returned by the
  * Explore endpoints. Monetary fields are USD decimal strings — parse them as decimals, not
  * floats.
  *
  */
 export type Offering = {
   /**
-   * The offering's stable external id.
+   * The offering's stable id.
    */
   id?: string;
   type?: string;
@@ -410,7 +487,7 @@ export type Offering = {
    */
   company?: {
     /**
-     * The company's `co_` external id.
+     * The company's id (`co_...`).
      */
     id?: string;
     type?: string;
@@ -799,7 +876,10 @@ export type FullAttribution = {
  * JSON:API resource representing a syndicate
  */
 export type Syndicate = {
-  id?: number;
+  /**
+   * The syndicate's id (`syn_...`).
+   */
+  id?: string;
   type?: string;
   attributes?: {
     name?: string;
@@ -1019,35 +1099,223 @@ export type SyndicateDeal = {
  */
 export type SyndicateDealDetail = SyndicateDeal;
 
-export type SyndicatePortfolio = {
+/**
+ * The company behind a portfolio position or holding.
+ */
+export type PortfolioCompanyRef = {
+  /**
+   * The company's id (`co_...`)
+   */
+  id?: string;
+  name?: string;
+  slug?: string | null;
+};
+
+/**
+ * One security offering within the position's fundraise, such as an early bird
+ * tier or the regular terms. Most positions have a single entry. A position has
+ * several when the round sold multiple tiers, or (investor endpoint) when the
+ * investor holds the same offering through more than one legal owner. Entries
+ * do not have ids; each is described by its `terms`, and occasionally a round
+ * has more than one offering record with identical terms.
+ *
+ */
+export type PortfolioSecurity = {
+  /**
+   * Security type (`safe`, `equity`, `convertible_note`, `revenue_share`,
+   * `simple_loan`, `priced_round`, `fund`, `custom`). May be null on legacy
+   * offerings — fall back to the position-level `structure`.
+   *
+   */
+  structure?: string | null;
+  early_bird?: boolean;
+  /**
+   * The offering's issue terms. Fields are null when the term does not apply to the security type.
+   */
+  terms?: {
+    /**
+     * Issue price per share as a decimal string
+     */
+    share_price?: string | null;
+    note_cap_cents?: number | null;
+    note_discount?: string | null;
+    premoney_valuation_cents?: number | null;
+  };
+  cost_basis_cents?: number;
+  current_value_cents?: number;
+  unrealized_gain_cents?: number;
+  realized_gain_cents?: number;
+  /**
+   * Decimal string. Null for non-share structures and multiple-of-basis valuations.
+   */
+  shares_held?: string | null;
+  /**
+   * Decimal string, split-adjusted.
+   */
+  current_share_price?: string | null;
+  invested_at?: string | null;
+  /**
+   * The legal owner of this stake — `{"kind": "individual"}` for
+   * personally-held stakes, `{"kind": "entity", "name": "..."}` for stakes
+   * held through the investor's own entity (IRA, LLC). Present on the
+   * investor endpoint only.
+   *
+   */
+  owner?: {
+    kind?: "individual" | "entity";
+    name?: string;
+  } | null;
+  /**
+   * The number of distinct investors aggregated into this entry. Present on the syndicate endpoint only.
+   */
+  investor_count?: number;
+};
+
+/**
+ * A company a fund vehicle invested in — one entry per company, with the
+ * status of the most recent investment when the fund invested in the same
+ * company more than once.
+ *
+ */
+export type PortfolioHolding = {
+  company?: PortfolioCompanyRef;
+  status?: "active" | "failed" | "exited";
+};
+
+/**
+ * One position per offering (fundraise). On the investor endpoint the totals
+ * sum the authenticated investor's stakes; on the syndicate endpoint they sum
+ * every holder's stakes and `investor_count` is present.
+ *
+ */
+export type PortfolioPosition = {
+  /**
+   * The offering's id (`ofr_...`) — a position's identity is its offering.
+   */
+  id?: string;
+  type?: "portfolio_position" | "syndicate_portfolio_position";
+  attributes?: {
+    offering_id?: string;
+    company?: PortfolioCompanyRef;
+    /**
+     * `fund` for SPV and fund vehicles; the underlying companies appear in `holdings` where recorded.
+     */
+    asset_type?: "company" | "fund";
+    /**
+     * The fundraise's security structure (`safe`, `equity`, `fund`, ...)
+     */
+    structure?: string;
+    /**
+     * `sold` means the stake was transferred away (secondary sale).
+     */
+    status?: "active" | "exited" | "sold" | "failed";
+    /**
+     * Why the position ended. Set only for `exited` and `failed`
+     * positions — a `sold` position ended with the transfer itself, and
+     * some older positions have no recorded ending. `ipo` means the
+     * company went public; distributions, if any, appear in
+     * `realized_gain_cents`.
+     *
+     */
+    exit_reason?: "ipo" | "acquisition" | "buyback" | "failed" | "winding_down";
+    invested_at?: string | null;
+    currency?: string;
+    cost_basis_cents?: number;
+    /**
+     * Estimated current value; based on cost basis when no newer valuation has been recorded.
+     */
+    current_value_cents?: number;
+    /**
+     * Can be negative.
+     */
+    unrealized_gain_cents?: number;
+    realized_gain_cents?: number;
+    /**
+     * Decimal string. Null when cost basis is zero.
+     */
+    return_multiple?: string | null;
+    shares_held?: string | null;
+    /**
+     * Null when the position's securities carry different prices — see the per-entry values.
+     */
+    current_share_price?: string | null;
+    securities?: Array<PortfolioSecurity>;
+    /**
+     * Companies the vehicle invested in, for fund positions. Empty for non-fund positions and for vehicles without recorded holdings.
+     */
+    holdings?: Array<PortfolioHolding>;
+    /**
+     * The number of distinct investors in this deal. Present on the syndicate endpoint only.
+     */
+    investor_count?: number;
+    /**
+     * When the values in this position were last calculated (the oldest timestamp when several underlying records are combined).
+     */
+    as_of?: string;
+  };
+};
+
+export type PortfolioPositionListEnvelope = {
+  data?: Array<PortfolioPosition>;
+  meta?: {
+    has_more?: boolean;
+    page_count?: number;
+    /**
+     * Pass as `cursor` to fetch the next page. Absent on the last page.
+     */
+    next_cursor?: number | null;
+  };
+};
+
+export type PortfolioSummaryEnvelope = {
   data?: {
-    syndicate_id?: number;
-    syndicate_name?: string;
-    snapshot_at?: string;
-    totals?: {
-      total_invested_cents?: number;
-      total_positions?: number;
-      active_positions?: number;
-      exited_positions?: number;
+    type?: string;
+    attributes?: {
+      currency?: string;
+      total_cost_basis_cents?: number;
+      total_current_value_cents?: number;
+      total_unrealized_gain_cents?: number;
+      total_realized_gain_cents?: number;
+      return_multiple?: string | null;
+      /**
+       * Distinct offerings per status.
+       */
+      position_counts?: {
+        active?: number;
+        exited?: number;
+        sold?: number;
+        failed?: number;
+      };
+      as_of?: string | null;
     };
-    positions?: Array<{
-      company?: {
-        id?: number;
-        name?: string;
-        slug?: string;
+  };
+};
+
+export type SyndicatePortfolioSummaryEnvelope = {
+  data?: {
+    type?: string;
+    attributes?: {
+      currency?: string;
+      total_cost_basis_cents?: number;
+      total_current_value_cents?: number;
+      total_unrealized_gain_cents?: number;
+      total_realized_gain_cents?: number;
+      return_multiple?: string | null;
+      /**
+       * Distinct deals per status.
+       */
+      deal_counts?: {
+        active?: number;
+        exited?: number;
+        sold?: number;
+        failed?: number;
       };
-      investment?: {
-        amount_cents?: number;
-        structure?: string;
-        invested_at?: string;
-        status?: "active" | "exited";
-      };
-      valuation?: {
-        basis_cents?: number;
-        current_estimate_cents?: number | null;
-        multiple?: number | null;
-      };
-    }>;
+      /**
+       * Distinct investors across the syndicate's funded deals.
+       */
+      investor_count?: number;
+      as_of?: string | null;
+    };
   };
 };
 
@@ -1186,7 +1454,10 @@ export type Intent = {
       | "rejected"
       | "failed";
     resource_type?: string;
-    resource_id?: number;
+    /**
+     * For Club resources, the syndicate's id (`syn_...`).
+     */
+    resource_id?: string;
     impact_summary?: string;
     /**
      * URL where a human can review and approve/reject this intent
@@ -1226,7 +1497,10 @@ export type AuditEvent = {
     actor_name?: string;
     action?: string;
     resource_type?: string;
-    resource_id?: number;
+    /**
+     * For Club resources, the syndicate's id (`syn_...`).
+     */
+    resource_id?: string;
     resource_label?: string | null;
     /**
      * Previous values of changed fields
@@ -1358,7 +1632,14 @@ export type SpvCreateInput = {
 
 export type SpvMetrics = {
   total_raised_cents?: number;
+  /**
+   * Investors with an active investment in this SPV.
+   */
   investor_count?: number;
+  /**
+   * The documented per-SPV investor soft cap (247). Advisory only — it is not enforced, and `investor_count` may exceed it.
+   */
+  documented_soft_cap?: number;
   confirmed_count?: number;
   pending_count?: number;
   average_investment_cents?: number;
@@ -1388,91 +1669,238 @@ export type Spv = {
   };
 };
 
-export type SpvCloseStatus = {
-  spv_id?: string;
-  status?: "closing" | "closed";
-  steps?: Array<{
-    name?:
-      | "investment_cutoff"
-      | "pending_resolution"
-      | "final_tally"
-      | "disbursement"
-      | "cap_table";
-    status?: "pending" | "in_progress" | "complete";
-    completed_at?: string | null;
-    pending_count?: number | null;
-  }>;
-  estimated_completion?: string | null;
-};
-
-export type InviteCreateInput = {
-  email: string;
-  first_name?: string;
-  last_name?: string;
-  /**
-   * Optional reserved allocation for this investor.
-   */
-  allocation_cents?: number | null;
-  /**
-   * Optional personal message included in the invite email.
-   */
-  message?: string;
-  send_email?: boolean;
-};
-
-export type Invite = {
+/**
+ * An investor in an SPV, aggregated across all their investments in it.
+ * `full_name` and `email` are null unless the token holds `read:investors:pii`.
+ *
+ */
+export type PartnerInvestor = {
   id?: string;
   type?: string;
   attributes?: {
-    email?: string;
-    status?: "pending" | "opened" | "invested" | "expired" | "revoked";
-    allocation_cents?: number | null;
-    invest_url?: string;
-    investment_id?: string | null;
-    created_at?: string;
-    opened_at?: string | null;
-    invested_at?: string | null;
-    expires_at?: string | null;
+    full_name?: string | null;
+    email?: string | null;
+    accredited?: boolean;
+    /**
+     * Sum of the investor's active investments in this SPV.
+     */
+    total_invested_cents?: number;
+    investment_count?: number;
+    /**
+     * When the investor first invested in this SPV.
+     */
+    created_at?: string | null;
   };
 };
 
-export type InvestmentLinkCreateInput = {
+export type SpvStatus = {
+  id?: string;
+  type?: string;
+  attributes?: {
+    status?: "draft" | "open" | "closing" | "closed" | "canceled";
+    /**
+     * The offering is awaiting Wefunder review before it can open.
+     */
+    requires_ops_review?: boolean;
+    /**
+     * A disbursement is queued for this SPV but funds have not moved yet.
+     */
+    disbursement_scheduled?: boolean;
+    /**
+     * Estimated date funds will be disbursed — 3 business days from when the close executed and the SPV entered the disbursement queue. Present only while `status` is `closing` (awaiting disbursement); null before close and once funds have moved.
+     */
+    expected_disbursement_at?: string | null;
+    /**
+     * The investor roster has been finalized.
+     */
+    finalized_investor_list?: boolean;
+  };
+};
+
+export type BulkInviteLinkCreateInput = {
   /**
-   * Optional per-investor allocation cap applied to anyone using the link.
+   * Up to 100 per-person invites. Each item must include `email` or `wefunder_user_id`.
+   */
+  invite_links: Array<InviteLinkCreateInput>;
+};
+
+/**
+ * 207 Multi-Status — created links in `data`, per-item failures in `errors`.
+ */
+export type BulkInviteLinkEnvelope = {
+  data?: Array<InviteLink>;
+  errors?: Array<{
+    /**
+     * Position of the failed item in the request array.
+     */
+    index?: number;
+    type?: string;
+    detail?: string;
+  }>;
+  meta?: {
+    created?: number;
+    failed?: number;
+    request_id?: string;
+  };
+};
+
+/**
+ * All fields optional. With no `email`/`wefunder_user_id` the link is
+ * **reusable**; with either it becomes a **per-person** invite. `email` and
+ * `wefunder_user_id` are mutually exclusive. `max_uses` is rejected for
+ * per-person invites; `send_email` is rejected without a recipient.
+ *
+ */
+export type InviteLinkCreateInput = {
+  /**
+   * Budget cap, in cents. Reusable → total budget across all claims of the
+   * link. Per-person → the single recipient's cap.
+   *
    */
   allocation_cents?: number | null;
   /**
-   * Optional cap on how many investments the link can produce.
+   * Claim cap for a reusable link. Null = unlimited. Not allowed for per-person invites.
+   */
+  max_uses?: number | null;
+  /**
+   * Recipient email. Makes the link per-person. Mutually exclusive with `wefunder_user_id`.
+   */
+  email?: string | null;
+  /**
+   * Id (`usr_...`) of an existing Wefunder user to invite. Mutually exclusive with `email`; must resolve to a user (else 404).
+   */
+  wefunder_user_id?: string | null;
+  /**
+   * Recipient first name (per-person only).
+   */
+  first_name?: string | null;
+  /**
+   * Recipient last name (per-person only).
+   */
+  last_name?: string | null;
+  /**
+   * Personal message included in the invite email (per-person only).
+   */
+  message?: string | null;
+  /**
+   * Whether to email the invite (per-person only). Rejected on a reusable create.
+   */
+  send_email?: boolean;
+};
+
+/**
+ * Only link terms are mutable; recipient identity, `reuse`, and the URL token cannot change. Other fields are ignored.
+ */
+export type InviteLinkUpdateInput = {
+  allocation_cents?: number | null;
+  /**
+   * Rejected for per-person invites and when set below the current `uses_count`.
    */
   max_uses?: number | null;
 };
 
-export type InvestmentLink = {
+/**
+ * A partner invite link. `id` is the link's `il_...` id (distinct from the URL
+ * access `token`, which lives only in `url`). Per-person (`reuse: false`)
+ * links carry the extra recipient + derived-status attributes below; reusable
+ * links omit them.
+ *
+ */
+export type InviteLink = {
   id?: string;
   type?: string;
   attributes?: {
+    /**
+     * Shareable invite URL. Carries the access token, not the id.
+     */
     url?: string;
     allocation_cents?: number | null;
     max_uses?: number | null;
     uses_count?: number;
+    /**
+     * False once the link is canceled (soft-deleted).
+     */
     active?: boolean;
     created_at?: string;
+    /**
+     * Per-person only — recipient email.
+     */
+    email?: string | null;
+    /**
+     * Per-person only — the recipient's id (`usr_...`), when they are an existing user.
+     */
+    wefunder_user_id?: string | null;
+    /**
+     * Per-person only — derived live, not stored. `pending` (sent, not yet
+     * opened), `opened` (link clicked), `invested` (a matching active
+     * investment exists), `revoked` (canceled).
+     *
+     */
+    status?: "pending" | "opened" | "invested" | "revoked";
+    /**
+     * Per-person only.
+     */
+    opened_at?: string | null;
+    /**
+     * Per-person only.
+     */
+    invested_at?: string | null;
+    /**
+     * Per-person only — the id (`inv_...`) of the matching investment.
+     */
+    investment_id?: string | null;
+    /**
+     * Engagement timeline. Present on the show (get-one) endpoint only.
+     */
+    events?: Array<{
+      event?: string;
+      city?: string | null;
+      country_code?: string | null;
+      created_at?: string;
+    }>;
   };
 };
 
 /**
  * Either `email` (invite an unknown recipient) or `wefunder_user_id` (target an
- * existing Wefunder user) should be provided.
+ * existing Wefunder user) should be provided. `spv_id` is required on
+ * `POST /partner/investment_sessions`; on the deprecated SPV-nested path the
+ * SPV comes from the URL instead.
  *
  */
 export type InvestmentSessionCreateInput = {
+  /**
+   * The SPV to invest into (prefixed, e.g. `spv_abc123`).
+   */
+  spv_id?: string | null;
   email?: string | null;
   wefunder_user_id?: string | null;
+  /**
+   * Fixed investment amount, in cents (whole dollars only). Locks the
+   * checkout to exactly this value, overriding the SPV's min/max
+   * purchase range. Omit to let the recipient choose an amount within
+   * that range.
+   *
+   */
   allocation_cents?: number | null;
   /**
    * Where to send the recipient after they complete the session.
    */
   success_url?: string | null;
+  /**
+   * Session lifetime in hours (default 720, i.e. 30 days).
+   */
+  expires_in_hours?: number | null;
+  /**
+   * Free-form key/value pairs stored with the session and echoed back on reads.
+   */
+  metadata?: {
+    [key: string]: unknown;
+  } | null;
+  /**
+   * The Intent that gated the SPV's creation, for audit; stored in `metadata`.
+   */
+  intent_id?: string | null;
 };
 
 export type InvestmentSession = {
@@ -1492,6 +1920,9 @@ export type InvestmentSession = {
     url?: string;
     spv_id?: string;
     email?: string | null;
+    /**
+     * The fixed amount the session locks to, in cents; null when the recipient chooses their own amount.
+     */
     allocation_cents?: number | null;
     kyc_status?: "pending" | "passed" | "failed";
     funding_status?:
@@ -1500,8 +1931,22 @@ export type InvestmentSession = {
      * Populated once the session completes successfully.
      */
     investment_id?: string | null;
+    /**
+     * The key/value pairs supplied at creation.
+     */
+    metadata?: {
+      [key: string]: unknown;
+    };
     created_at?: string;
     expires_at?: string | null;
+    /**
+     * Durable platform events recorded about this session, oldest first. Only present on the single-session GET.
+     */
+    events?: Array<{
+      id?: string;
+      event?: string;
+      occurred_at?: string;
+    }>;
   };
 };
 
@@ -1611,9 +2056,9 @@ export type PartnerWebhookEvent = {
 export type CampaignId = number;
 
 /**
- * The syndicate ID
+ * The syndicate's id (`syn_...`).
  */
-export type SyndicateId = number;
+export type SyndicateId = string;
 
 /**
  * The member ID
@@ -1668,9 +2113,9 @@ export type WebhookId = number;
 export type SpvId = string;
 
 /**
- * The invite ID (prefixed, e.g. `inv_xyz789`)
+ * The invite link ID (prefixed, e.g. `il_abc123`)
  */
-export type InviteId = string;
+export type InviteLinkId = string;
 
 /**
  * The investment session ID (prefixed, e.g. `is_abc123`)
@@ -1760,7 +2205,7 @@ export type GetOfferingData = {
   body?: never;
   path: {
     /**
-     * The offering's `ofr_` external id.
+     * The offering's id (`ofr_...`).
      */
     external_id: string;
   };
@@ -1904,6 +2349,152 @@ export type ListInvestmentsResponses = {
 export type ListInvestmentsResponse =
   ListInvestmentsResponses[keyof ListInvestmentsResponses];
 
+export type GetPortfolioData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Total only positions with this status.
+     */
+    status?: "active" | "exited" | "sold" | "failed";
+    /**
+     * Total only positions in this company, by its id (`co_...`). Unknown ids return 404.
+     */
+    company?: string;
+  };
+  url: "/portfolio";
+};
+
+export type GetPortfolioErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * Too many requests in a short time period. The API enforces rate limits to ensure
+   * fair usage and system stability. When you exceed the limit, you'll receive this
+   * error along with headers indicating when you can retry.
+   *
+   * Check the `X-RateLimit-Reset` header to know when your limit will reset.
+   * Consider implementing exponential backoff in your application.
+   *
+   */
+  429: Error;
+};
+
+export type GetPortfolioError = GetPortfolioErrors[keyof GetPortfolioErrors];
+
+export type GetPortfolioResponses = {
+  /**
+   * Successful response
+   */
+  200: PortfolioSummaryEnvelope;
+};
+
+export type GetPortfolioResponse =
+  GetPortfolioResponses[keyof GetPortfolioResponses];
+
+export type ListPortfolioPositionsData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Cursor-based pagination token. Use the `next_cursor` value from the previous response's
+     * `meta` object to retrieve the next page of results. Omit this parameter to retrieve the
+     * first page.
+     *
+     */
+    cursor?: number;
+    /**
+     * Page size, 1-100. Defaults to 25.
+     */
+    per_page?: number;
+    /**
+     * Filter positions by status.
+     */
+    status?: "active" | "exited" | "sold" | "failed";
+    /**
+     * Filter to a single company by its id (`co_...`). Unknown ids return 404.
+     */
+    company?: string;
+  };
+  url: "/portfolio/positions";
+};
+
+export type ListPortfolioPositionsErrors = {
+  /**
+   * Invalid filter value (unknown status or malformed cursor)
+   */
+  400: Error;
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * Filtered company not found
+   */
+  404: Error;
+  /**
+   * Too many requests in a short time period. The API enforces rate limits to ensure
+   * fair usage and system stability. When you exceed the limit, you'll receive this
+   * error along with headers indicating when you can retry.
+   *
+   * Check the `X-RateLimit-Reset` header to know when your limit will reset.
+   * Consider implementing exponential backoff in your application.
+   *
+   */
+  429: Error;
+};
+
+export type ListPortfolioPositionsError =
+  ListPortfolioPositionsErrors[keyof ListPortfolioPositionsErrors];
+
+export type ListPortfolioPositionsResponses = {
+  /**
+   * Successful response
+   */
+  200: PortfolioPositionListEnvelope;
+};
+
+export type ListPortfolioPositionsResponse =
+  ListPortfolioPositionsResponses[keyof ListPortfolioPositionsResponses];
+
 export type ListCampaignsData = {
   body?: never;
   path?: never;
@@ -2023,9 +2614,9 @@ export type GetSyndicateData = {
   body?: never;
   path: {
     /**
-     * The syndicate ID
+     * The syndicate's id (`syn_...`).
      */
-    syndicate_id: number;
+    syndicate_id: string;
   };
   query?: never;
   url: "/syndicates/{syndicate_id}";
@@ -2082,9 +2673,9 @@ export type UpdateSyndicateData = {
   };
   path: {
     /**
-     * The syndicate ID
+     * The syndicate's id (`syn_...`).
      */
-    syndicate_id: number;
+    syndicate_id: string;
   };
   query?: never;
   url: "/syndicates/{syndicate_id}";
@@ -2136,9 +2727,9 @@ export type ListSyndicateMembersData = {
   body?: never;
   path: {
     /**
-     * The syndicate ID
+     * The syndicate's id (`syn_...`).
      */
-    syndicate_id: number;
+    syndicate_id: string;
   };
   query?: {
     /**
@@ -2225,9 +2816,9 @@ export type InviteSyndicateMemberData = {
   };
   path: {
     /**
-     * The syndicate ID
+     * The syndicate's id (`syn_...`).
      */
-    syndicate_id: number;
+    syndicate_id: string;
   };
   query?: never;
   url: "/syndicates/{syndicate_id}/members/invite";
@@ -2279,9 +2870,9 @@ export type RemoveSyndicateMemberData = {
   body?: never;
   path: {
     /**
-     * The syndicate ID
+     * The syndicate's id (`syn_...`).
      */
-    syndicate_id: number;
+    syndicate_id: string;
     /**
      * The member ID
      */
@@ -2310,9 +2901,9 @@ export type UpdateSyndicateMemberData = {
   };
   path: {
     /**
-     * The syndicate ID
+     * The syndicate's id (`syn_...`).
      */
-    syndicate_id: number;
+    syndicate_id: string;
     /**
      * The member ID
      */
@@ -2364,9 +2955,9 @@ export type ApproveSyndicateMemberData = {
   body?: never;
   path: {
     /**
-     * The syndicate ID
+     * The syndicate's id (`syn_...`).
      */
-    syndicate_id: number;
+    syndicate_id: string;
     /**
      * The member ID
      */
@@ -2418,9 +3009,9 @@ export type HideSyndicateMemberData = {
   body?: never;
   path: {
     /**
-     * The syndicate ID
+     * The syndicate's id (`syn_...`).
      */
-    syndicate_id: number;
+    syndicate_id: string;
     /**
      * The member ID
      */
@@ -2472,9 +3063,9 @@ export type PromoteSyndicateMemberData = {
   body?: never;
   path: {
     /**
-     * The syndicate ID
+     * The syndicate's id (`syn_...`).
      */
-    syndicate_id: number;
+    syndicate_id: string;
     /**
      * The member ID
      */
@@ -2526,9 +3117,9 @@ export type DemoteSyndicateMemberData = {
   body?: never;
   path: {
     /**
-     * The syndicate ID
+     * The syndicate's id (`syn_...`).
      */
-    syndicate_id: number;
+    syndicate_id: string;
     /**
      * The member ID
      */
@@ -2580,9 +3171,9 @@ export type RestoreSyndicateMemberData = {
   body?: never;
   path: {
     /**
-     * The syndicate ID
+     * The syndicate's id (`syn_...`).
      */
-    syndicate_id: number;
+    syndicate_id: string;
     /**
      * The member ID
      */
@@ -2634,9 +3225,9 @@ export type ResendSyndicateInviteData = {
   body?: never;
   path: {
     /**
-     * The syndicate ID
+     * The syndicate's id (`syn_...`).
      */
-    syndicate_id: number;
+    syndicate_id: string;
     /**
      * The member ID
      */
@@ -2687,9 +3278,9 @@ export type ReorderSyndicateMembersData = {
   };
   path: {
     /**
-     * The syndicate ID
+     * The syndicate's id (`syn_...`).
      */
-    syndicate_id: number;
+    syndicate_id: string;
   };
   query?: never;
   url: "/syndicates/{syndicate_id}/members/reorder";
@@ -2734,9 +3325,9 @@ export type ExportSyndicateMembersCsvData = {
   body?: never;
   path: {
     /**
-     * The syndicate ID
+     * The syndicate's id (`syn_...`).
      */
-    syndicate_id: number;
+    syndicate_id: string;
   };
   query?: never;
   url: "/syndicates/{syndicate_id}/members/export_csv";
@@ -2784,9 +3375,9 @@ export type ListSyndicateDealsData = {
   body?: never;
   path: {
     /**
-     * The syndicate ID
+     * The syndicate's id (`syn_...`).
      */
-    syndicate_id: number;
+    syndicate_id: string;
   };
   query?: never;
   url: "/syndicates/{syndicate_id}/deals";
@@ -2834,9 +3425,9 @@ export type GetSyndicateDealData = {
   body?: never;
   path: {
     /**
-     * The syndicate ID
+     * The syndicate's id (`syn_...`).
      */
-    syndicate_id: number;
+    syndicate_id: string;
     /**
      * The deal (fundraise) ID
      */
@@ -2892,9 +3483,9 @@ export type ListSyndicateDealInvestorsData = {
   body?: never;
   path: {
     /**
-     * The syndicate ID
+     * The syndicate's id (`syn_...`).
      */
-    syndicate_id: number;
+    syndicate_id: string;
     /**
      * The deal (fundraise) ID
      */
@@ -2959,9 +3550,9 @@ export type ListSyndicateMemberInvestmentsData = {
   body?: never;
   path: {
     /**
-     * The syndicate ID
+     * The syndicate's id (`syn_...`).
      */
-    syndicate_id: number;
+    syndicate_id: string;
     /**
      * The member ID
      */
@@ -3017,9 +3608,9 @@ export type GetSyndicateStatisticsData = {
   body?: never;
   path: {
     /**
-     * The syndicate ID
+     * The syndicate's id (`syn_...`).
      */
-    syndicate_id: number;
+    syndicate_id: string;
   };
   query?: never;
   url: "/syndicates/{syndicate_id}/statistics";
@@ -3067,13 +3658,154 @@ export type GetSyndicateStatisticsResponses = {
 export type GetSyndicateStatisticsResponse =
   GetSyndicateStatisticsResponses[keyof GetSyndicateStatisticsResponses];
 
+export type GetSyndicatePortfolioData = {
+  body?: never;
+  path: {
+    /**
+     * The syndicate's id (`syn_...`).
+     */
+    syndicate_id: string;
+  };
+  query?: {
+    /**
+     * Total only deals with this status.
+     */
+    status?: "active" | "exited" | "sold" | "failed";
+    /**
+     * Total only positions in this company, by its id (`co_...`). Unknown ids return 404.
+     */
+    company?: string;
+  };
+  url: "/syndicates/{syndicate_id}/portfolio";
+};
+
+export type GetSyndicatePortfolioErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * Syndicate not found
+   */
+  404: Error;
+};
+
+export type GetSyndicatePortfolioError =
+  GetSyndicatePortfolioErrors[keyof GetSyndicatePortfolioErrors];
+
+export type GetSyndicatePortfolioResponses = {
+  /**
+   * Successful response
+   */
+  200: SyndicatePortfolioSummaryEnvelope;
+};
+
+export type GetSyndicatePortfolioResponse =
+  GetSyndicatePortfolioResponses[keyof GetSyndicatePortfolioResponses];
+
+export type ListSyndicatePortfolioPositionsData = {
+  body?: never;
+  path: {
+    /**
+     * The syndicate's id (`syn_...`).
+     */
+    syndicate_id: string;
+  };
+  query?: {
+    /**
+     * Cursor-based pagination token. Use the `next_cursor` value from the previous response's
+     * `meta` object to retrieve the next page of results. Omit this parameter to retrieve the
+     * first page.
+     *
+     */
+    cursor?: number;
+    /**
+     * Page size, 1-100. Defaults to 25.
+     */
+    per_page?: number;
+    /**
+     * Filter positions by status.
+     */
+    status?: "active" | "exited" | "sold" | "failed";
+    /**
+     * Filter to a single company by its id (`co_...`). Unknown ids return 404.
+     */
+    company?: string;
+  };
+  url: "/syndicates/{syndicate_id}/portfolio/positions";
+};
+
+export type ListSyndicatePortfolioPositionsErrors = {
+  /**
+   * Invalid filter value (unknown status or malformed cursor)
+   */
+  400: Error;
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * Syndicate or filtered company not found
+   */
+  404: Error;
+};
+
+export type ListSyndicatePortfolioPositionsError =
+  ListSyndicatePortfolioPositionsErrors[keyof ListSyndicatePortfolioPositionsErrors];
+
+export type ListSyndicatePortfolioPositionsResponses = {
+  /**
+   * Successful response
+   */
+  200: PortfolioPositionListEnvelope;
+};
+
+export type ListSyndicatePortfolioPositionsResponse =
+  ListSyndicatePortfolioPositionsResponses[keyof ListSyndicatePortfolioPositionsResponses];
+
 export type CloseSyndicateDealData = {
   body?: never;
   path: {
     /**
-     * The syndicate ID
+     * The syndicate's id (`syn_...`).
      */
-    syndicate_id: number;
+    syndicate_id: string;
     /**
      * The deal (fundraise) ID
      */
@@ -3085,21 +3817,57 @@ export type CloseSyndicateDealData = {
 
 export type CloseSyndicateDealErrors = {
   /**
-   * Use intents for this action
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The deal does not belong to this syndicate, or fundraise_id is missing
    */
   422: Error;
+  /**
+   * Too many pending intents for this token (rate limited)
+   */
+  429: Error;
 };
 
 export type CloseSyndicateDealError =
   CloseSyndicateDealErrors[keyof CloseSyndicateDealErrors];
 
+export type CloseSyndicateDealResponses = {
+  /**
+   * Close intent proposed
+   */
+  200: SyndicateDealCloseIntentEnvelope;
+};
+
+export type CloseSyndicateDealResponse =
+  CloseSyndicateDealResponses[keyof CloseSyndicateDealResponses];
+
 export type FinalizeSyndicateDealData = {
   body?: never;
   path: {
     /**
-     * The syndicate ID
+     * The syndicate's id (`syn_...`).
      */
-    syndicate_id: number;
+    syndicate_id: string;
     /**
      * The deal (fundraise) ID
      */
@@ -3111,13 +3879,49 @@ export type FinalizeSyndicateDealData = {
 
 export type FinalizeSyndicateDealErrors = {
   /**
-   * Use intents for this action
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The deal does not belong to this syndicate, or fundraise_id is missing
    */
   422: Error;
+  /**
+   * Too many pending intents for this token (rate limited)
+   */
+  429: Error;
 };
 
 export type FinalizeSyndicateDealError =
   FinalizeSyndicateDealErrors[keyof FinalizeSyndicateDealErrors];
+
+export type FinalizeSyndicateDealResponses = {
+  /**
+   * Finalize intent proposed
+   */
+  200: SyndicateDealFinalizeIntentEnvelope;
+};
+
+export type FinalizeSyndicateDealResponse =
+  FinalizeSyndicateDealResponses[keyof FinalizeSyndicateDealResponses];
 
 export type ListIntentsData = {
   body?: never;
@@ -3126,7 +3930,10 @@ export type ListIntentsData = {
     status?:
       "pending" | "approved" | "executed" | "expired" | "rejected" | "failed";
     resource_type?: string;
-    resource_id?: number;
+    /**
+     * For Club resources, the syndicate's id (`syn_...`).
+     */
+    resource_id?: string;
     cursor?: string;
     limit?: number;
   };
@@ -3174,7 +3981,10 @@ export type CreateIntentData = {
      * The model class name of the resource
      */
     resource_type: string;
-    resource_id: number;
+    /**
+     * The syndicate's id (`syn_...`).
+     */
+    resource_id: string;
     /**
      * Action-specific parameters
      */
@@ -3298,9 +4108,11 @@ export type ListActivityData = {
      */
     resource_type?: string;
     /**
-     * Filter by specific resource ID. Must be used with resource_type.
+     * Filter by specific resource ID. Must be used with resource_type. For
+     * Club resources, pass the syndicate's id (`syn_...`).
+     *
      */
-    resource_id?: number;
+    resource_id?: string;
     status?: "success" | "failure" | "denied";
     since?: string;
     until?: string;

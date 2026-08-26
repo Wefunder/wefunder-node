@@ -43,8 +43,8 @@ paths:
       description: |
         Returns the offerings shown on wefunder.com/explore — the curated set of companies that
         meet Wefunder's discoverability bar (a soft-confirmed traction threshold plus approval),
-        **one offering per company**. An "offering" is a fundraise, addressed by its `ofr_`
-        external id.
+        **one offering per company**. An "offering" is a fundraise, addressed by its id
+        (`ofr_...`).
 
         This is a public, read-only endpoint backed by the `read:public` scope. It is reachable
         with either a server-side (client_credentials) token or a user access token carrying
@@ -91,13 +91,27 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            // Browse live offerings, sorted. The cursor is opaque and handled for you.
+            const page = await wf.offerings.list({ sort: "most_raised" });
+            for (const offering of page.data ?? []) {
+              console.log(offering.id, offering.attributes?.company_name);
+            }
+
+            // Or stream every offering lazily, one page fetched at a time:
+            for await (const offering of wf.offerings.all({ sort: "newest" })) {
+              console.log(offering.id);
+            }
   /offerings/{external_id}:
     get:
       tags:
         - Explore
       summary: Get a public offering
       description: |
-        Retrieves a single public offering by its `ofr_` external id.
+        Retrieves a single public offering by its id (`ofr_...`).
 
         A valid id for a non-public offering (e.g. a private Reg D 506(b) round) returns `404` —
         having an id does not make an offering publicly resolvable.
@@ -109,7 +123,7 @@ paths:
         - name: external_id
           in: path
           required: true
-          description: The offering's `ofr_` external id.
+          description: The offering's id (`ofr_...`).
           schema:
             type: string
           example: ofr_yw3OhusvpfJP4Pk3wRYV1F2R
@@ -126,6 +140,12 @@ paths:
           $ref: '#/components/responses/NotFound'
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const offering = await wf.offerings.get("ofr_QfmTyP8qjfYAvkEgREyL3kLf");
+            console.log(offering.attributes?.company_name, offering.attributes?.state);
   /users/me:
     get:
       tags:
@@ -156,6 +176,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const me = await wf.users.me();
+            console.log("Logged in as", me.id);
   /investments:
     get:
       tags:
@@ -188,6 +214,143 @@ paths:
                 $ref: '#/components/schemas/InvestmentListEnvelope'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            // Auto-paginate the full history lazily:
+            for await (const investment of wf.investments.all()) {
+              console.log(investment.id);
+            }
+
+            // Or grab one page with its meta (next_cursor, etc.):
+            const page = await wf.investments.list();
+            console.log(page.data?.length, page.meta?.next_cursor);
+  /portfolio:
+    get:
+      tags:
+        - Portfolio
+      summary: Get portfolio summary
+      description: |
+        Returns totals across the authenticated investor's portfolio: cost basis,
+        current value, realized and unrealized gains, and per-status position counts.
+        Accepts the same `status` and `company` filters as `GET /portfolio/positions`
+        to total a slice of the portfolio, such as only exited positions.
+
+        Requires a user-authorized token. App-only (client credentials) tokens
+        receive 403.
+
+        Portfolio values are recalculated periodically rather than on each request,
+        so recent investments and valuation changes can take a few minutes to appear.
+        `as_of` is the timestamp of the oldest calculation included in the response.
+
+        Monetary values are **integer cents**; per-share prices and return multiples
+        are **decimal strings**.
+      operationId: getPortfolio
+      security:
+        - bearerAuth:
+            - read:investments
+      parameters:
+        - name: status
+          in: query
+          description: Total only positions with this status.
+          schema:
+            type: string
+            enum:
+              - active
+              - exited
+              - sold
+              - failed
+        - name: company
+          in: query
+          description: Total only positions in this company, by its id (`co_...`). Unknown ids return 404.
+          schema:
+            type: string
+          example: co_2bt9eJn6X8C9gnShl63qlzkK
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortfolioSummaryEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+  /portfolio/positions:
+    get:
+      tags:
+        - Portfolio
+      summary: List portfolio positions
+      description: |
+        Returns the authenticated investor's positions, one per offering
+        (fundraise), newest first. Position totals cover everything the investor
+        holds in that offering; `securities` breaks the total down by security
+        offering and legal owner, so early bird tiers and personally-held vs
+        entity-held stakes each appear separately. Fund and SPV positions identify
+        the companies the vehicle invested in under `holdings`.
+
+        To compute an average cost per share, divide `cost_basis_cents` by
+        `shares_held`.
+
+        Requires a user-authorized token, like `GET /portfolio`.
+      operationId: listPortfolioPositions
+      security:
+        - bearerAuth:
+            - read:investments
+      parameters:
+        - $ref: '#/components/parameters/cursor'
+        - name: per_page
+          in: query
+          description: Page size, 1-100. Defaults to 25.
+          schema:
+            type: integer
+            default: 25
+            maximum: 100
+        - name: status
+          in: query
+          description: Filter positions by status.
+          schema:
+            type: string
+            enum:
+              - active
+              - exited
+              - sold
+              - failed
+        - name: company
+          in: query
+          description: Filter to a single company by its id (`co_...`). Unknown ids return 404.
+          schema:
+            type: string
+          example: co_2bt9eJn6X8C9gnShl63qlzkK
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortfolioPositionListEnvelope'
+        '400':
+          description: Invalid filter value (unknown status or malformed cursor)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Filtered company not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
   /campaigns:
@@ -227,6 +390,20 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            // Campaigns for companies where the authenticated user is a founder.
+            const page = await wf.campaigns.list();
+            for (const campaign of page.data ?? []) {
+              console.log(campaign.id, campaign.attributes?.company_name, campaign.attributes?.amount_raised);
+            }
+
+            // Or stream every campaign lazily, one page fetched at a time:
+            for await (const campaign of wf.campaigns.all()) {
+              console.log(campaign.attributes?.state);
+            }
   /syndicates:
     get:
       tags:
@@ -263,6 +440,14 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const page = await wf.syndicates.list({ limit: 50 });
+            for (const syndicate of page.data ?? []) {
+              console.log(syndicate.id, syndicate.attributes?.name, syndicate.attributes?.member_count);
+            }
   /syndicates/{syndicate_id}:
     get:
       tags:
@@ -292,6 +477,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const syndicate = await wf.syndicates.get(42);
+            console.log(syndicate.attributes?.name, syndicate.attributes?.deal_count);
     patch:
       tags:
         - Syndicates
@@ -903,15 +1094,146 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /syndicates/{syndicate_id}/portfolio:
+    get:
+      tags:
+        - Syndicate Portfolio
+      summary: Get syndicate portfolio summary
+      description: |
+        Returns totals across the syndicate's portfolio: cost basis, current value,
+        gains, per-status deal counts, and the number of distinct investors.
+        Accepts the same `status` and `company` filters as the positions endpoint
+        to total a slice of the portfolio, such as only exited deals.
+
+        The summary covers the syndicate's funded deals, summed across everyone
+        holding their securities (not just current members), as aggregate figures
+        only. Member-level data is available on the members endpoints.
+
+        Portfolio values are recalculated periodically rather than on each request,
+        so recent investments and valuation changes can take a few minutes to appear.
+        `as_of` is the timestamp of the oldest calculation included in the response.
+
+        Monetary values are **integer cents**; per-share prices and return multiples
+        are **decimal strings**.
+      operationId: getSyndicatePortfolio
+      security:
+        - bearerAuth:
+            - read:syndicates
+      parameters:
+        - $ref: '#/components/parameters/syndicate_id'
+        - name: status
+          in: query
+          description: Total only deals with this status.
+          schema:
+            type: string
+            enum:
+              - active
+              - exited
+              - sold
+              - failed
+        - name: company
+          in: query
+          description: Total only positions in this company, by its id (`co_...`). Unknown ids return 404.
+          schema:
+            type: string
+          example: co_2bt9eJn6X8C9gnShl63qlzkK
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyndicatePortfolioSummaryEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Syndicate not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /syndicates/{syndicate_id}/portfolio/positions:
+    get:
+      tags:
+        - Syndicate Portfolio
+      summary: List syndicate portfolio positions
+      description: |
+        Returns the syndicate's portfolio one deal at a time, newest first. Each
+        position is one fundraise ("offering"), aggregated across everyone holding
+        its securities, with `investor_count` at both the position and security
+        level.
+
+        `securities` breaks each position down by security offering (for example,
+        an early bird tier vs the regular terms) — most deals have a single entry.
+        Fund and SPV deals identify the companies the vehicle invested in under
+        `holdings`; some older vehicles have no recorded holdings and return an
+        empty array.
+      operationId: listSyndicatePortfolioPositions
+      security:
+        - bearerAuth:
+            - read:syndicates
+      parameters:
+        - $ref: '#/components/parameters/syndicate_id'
+        - $ref: '#/components/parameters/cursor'
+        - name: per_page
+          in: query
+          description: Page size, 1-100. Defaults to 25.
+          schema:
+            type: integer
+            default: 25
+            maximum: 100
+        - name: status
+          in: query
+          description: Filter positions by status.
+          schema:
+            type: string
+            enum:
+              - active
+              - exited
+              - sold
+              - failed
+        - name: company
+          in: query
+          description: Filter to a single company by its id (`co_...`). Unknown ids return 404.
+          schema:
+            type: string
+          example: co_2bt9eJn6X8C9gnShl63qlzkK
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortfolioPositionListEnvelope'
+        '400':
+          description: Invalid filter value (unknown status or malformed cursor)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Syndicate or filtered company not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /syndicates/{syndicate_id}/deals/{fundraise_id}/close:
     post:
       tags:
         - Syndicate Deals
-      summary: Close deal (requires intent)
+      summary: Close deal
       description: |
         Closing a deal is irreversible and requires human approval through the Intent system.
-        This endpoint always returns 422 with a `use_intents` error directing you to
-        `POST /v2/intents` with action `syndicates.close_deal`.
+        This endpoint server-mints a pending `syndicates.close_deal` intent and returns the deal
+        under `data` plus the intent's `review_url` under `meta.close_deal_intent`. The deal is
+        not transitioned until a permitted human approves the intent in the Wefunder UI.
+        Idempotent: a repeated call returns the same pending intent rather than minting a duplicate.
       operationId: closeSyndicateDeal
       security:
         - bearerAuth:
@@ -920,8 +1242,24 @@ paths:
         - $ref: '#/components/parameters/syndicate_id'
         - $ref: '#/components/parameters/fundraise_id'
       responses:
+        '200':
+          description: Close intent proposed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyndicateDealCloseIntentEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '422':
-          description: Use intents for this action
+          description: The deal does not belong to this syndicate, or fundraise_id is missing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many pending intents for this token (rate limited)
           content:
             application/json:
               schema:
@@ -930,11 +1268,13 @@ paths:
     post:
       tags:
         - Syndicate Deals
-      summary: Finalize deal (requires intent)
+      summary: Finalize deal
       description: |
-        Finalizing a deal triggers disbursement and is irreversible. It requires human approval
-        through the Intent system. This endpoint always returns 422 with a `use_intents` error
-        directing you to `POST /v2/intents` with action `syndicates.finalize_deal`.
+        Finalizing a deal is irreversible and requires human approval through the Intent system.
+        This endpoint server-mints a pending `syndicates.finalize_deal` intent and returns the
+        deal under `data` plus the intent's `review_url` under `meta.finalize_deal_intent`. The
+        finalize runs only when a permitted human approves the intent in the Wefunder UI.
+        Idempotent: a repeated call returns the same pending intent rather than minting a duplicate.
       operationId: finalizeSyndicateDeal
       security:
         - bearerAuth:
@@ -943,8 +1283,24 @@ paths:
         - $ref: '#/components/parameters/syndicate_id'
         - $ref: '#/components/parameters/fundraise_id'
       responses:
+        '200':
+          description: Finalize intent proposed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyndicateDealFinalizeIntentEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '422':
-          description: Use intents for this action
+          description: The deal does not belong to this syndicate, or fundraise_id is missing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many pending intents for this token (rate limited)
           content:
             application/json:
               schema:
@@ -992,8 +1348,9 @@ paths:
                   example: Club
                   description: The model class name of the resource
                 resource_id:
-                  type: integer
-                  example: 42
+                  type: string
+                  description: The syndicate's id (`syn_...`).
+                  example: syn_aB3xQ9k2vF8mNp1zT5wY7Qc4
                 params:
                   type: object
                   description: Action-specific parameters
@@ -1030,6 +1387,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const { data: intent } = await wf.unwrap(
+              wf.raw.createIntent({
+                body: {
+                  action_name: "syndicates.close_deal",
+                  resource_type: "Club",
+                  resource_id: 42,
+                  params: { fundraise_id: 99 },
+                  // Safe to retry: an existing pending/executed intent with this key is returned instead.
+                  idempotency_key: "close-acme-series-a",
+                  requested_by_agent: "My Deal Bot",
+                },
+              }),
+            );
+            // Hand this URL to a human — the action executes only after they approve.
+            console.log(intent?.attributes?.review_url);
     get:
       tags:
         - Intents
@@ -1058,7 +1434,8 @@ paths:
         - name: resource_id
           in: query
           schema:
-            type: integer
+            type: string
+          description: For Club resources, the syndicate's id (`syn_...`).
         - name: cursor
           in: query
           schema:
@@ -1077,6 +1454,15 @@ paths:
                 $ref: '#/components/schemas/IntentListEnvelope'
         '401':
           $ref: '#/components/responses/Unauthorized'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            // Which of my proposed actions are still waiting on human approval?
+            const page = await wf.intents.list({ status: "pending" });
+            for (const intent of page.data ?? []) {
+              console.log(intent.id, intent.attributes?.action, intent.attributes?.review_url);
+            }
   /intents/{intent_id}:
     get:
       tags:
@@ -1112,6 +1498,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const intent = await wf.intents.get("intent_abc123");
+            console.log(intent.attributes?.status); // pending | approved | executed | expired | rejected | failed
   /activity:
     get:
       tags:
@@ -1143,8 +1535,10 @@ paths:
         - name: resource_id
           in: query
           schema:
-            type: integer
-          description: Filter by specific resource ID. Must be used with resource_type.
+            type: string
+          description: |
+            Filter by specific resource ID. Must be used with resource_type. For
+            Club resources, pass the syndicate's id (`syn_...`).
         - name: status
           in: query
           schema:
@@ -1182,6 +1576,19 @@ paths:
                 $ref: '#/components/schemas/AuditEventListEnvelope'
         '401':
           $ref: '#/components/responses/Unauthorized'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            // Everything my connected apps did to syndicate members, most recent first.
+            const activity = await wf.unwrap(
+              wf.raw.listActivity({
+                query: { action_pattern: "syndicates.member.*", status: "success" },
+              }),
+            );
+            for (const event of activity.data ?? []) {
+              console.log(event.attributes?.action, event.attributes?.created_at);
+            }
   /connected-apps:
     get:
       tags:
@@ -1201,6 +1608,14 @@ paths:
                 $ref: '#/components/schemas/ConnectedAppListEnvelope'
         '401':
           $ref: '#/components/responses/Unauthorized'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const apps = await wf.unwrap(wf.raw.listConnectedApps());
+            for (const app of apps.data ?? []) {
+              console.log(app.id, app.attributes?.name);
+            }
   /connected-apps/{app_id}:
     delete:
       tags:
@@ -1276,6 +1691,17 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const stats = await wf.unwrap(
+              wf.raw.getAttributionStats({
+                path: { campaign_id: 1234 },
+                query: { start_date: "2026-01-01", end_date: "2026-03-31", utm_source: "newsletter" },
+              }),
+            );
+            console.log(stats.data);
   /campaigns/{campaign_id}/attribution/investments:
     get:
       tags:
@@ -1343,6 +1769,22 @@ paths:
                 $ref: '#/components/schemas/Error'
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const investments = await wf.unwrap(
+              wf.raw.listAttributedInvestments({
+                path: { campaign_id: 1234 },
+                query: { start_date: "2026-01-01", detail_level: "anonymized" },
+              }),
+            );
+            for (const investment of investments.data ?? []) {
+              if ("amount_tier" in investment) {
+                // Anonymized row: opaque tokens + an amount tier, never exact values or PII.
+                console.log(investment.investor_token, investment.amount_tier, investment.attribution?.utm_source);
+              }
+            }
   /campaigns/{campaign_id}/attribution/webhooks:
     get:
       tags:
@@ -1371,6 +1813,16 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const subscriptions = await wf.unwrap(
+              wf.raw.listWebhookSubscriptions({ path: { campaign_id: 1234 } }),
+            );
+            for (const sub of subscriptions.data ?? []) {
+              console.log(sub.id, sub.target_url, sub.events, sub.active);
+            }
     post:
       tags:
         - Attribution Webhooks
@@ -1454,6 +1906,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const subscription = await wf.unwrap(
+              wf.raw.createWebhookSubscription({
+                path: { campaign_id: 1234 },
+                body: {
+                  target_url: "https://example.com/wefunder/webhooks",
+                  events: ["investment.confirmed", "investment.canceled"],
+                },
+              }),
+            );
+            console.log(subscription);
   /campaigns/{campaign_id}/attribution/webhooks/{webhook_id}:
     get:
       tags:
@@ -1486,6 +1952,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const subscription = await wf.unwrap(
+              wf.raw.getWebhookSubscription({ path: { campaign_id: 1234, webhook_id: 56 } }),
+            );
+            console.log(subscription.data);
     delete:
       tags:
         - Attribution Webhooks
@@ -1513,6 +1987,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: 'await wf.unwrap(wf.raw.deleteWebhookSubscription({ path: { campaign_id: 1234, webhook_id: 56 } }));'
   /campaigns/{campaign_id}/attribution/webhooks/{webhook_id}/test:
     post:
       tags:
@@ -1552,6 +2030,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const result = await wf.unwrap(
+              wf.raw.testWebhookSubscription({ path: { campaign_id: 1234, webhook_id: 56 } }),
+            );
+            console.log(result.data);
   /campaigns/{campaign_id}/attribution/webhooks/{webhook_id}/regenerate_secret:
     post:
       tags:
@@ -1647,6 +2133,12 @@ paths:
                 $ref: '#/components/schemas/AttributionMeEnvelope'
         '401':
           $ref: '#/components/responses/Unauthorized'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const me = await wf.attribution.me();
+            console.log(me);
   /attribution/campaigns:
     get:
       tags:
@@ -1669,6 +2161,12 @@ paths:
                 $ref: '#/components/schemas/AttributionCampaignSummaryListEnvelope'
         '401':
           $ref: '#/components/responses/Unauthorized'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const campaigns = await wf.unwrap(wf.raw.listAttributionCampaigns());
+            console.log(campaigns.data);
   /attribution/partners/register:
     post:
       tags:
@@ -1842,7 +2340,7 @@ components:
       flows:
         authorizationCode:
           authorizationUrl: https://wefunder.com/oauth/authorize
-          tokenUrl: https://wefunder.com/oauth/token
+          tokenUrl: https://api.wefunder.com/oauth/token
           scopes:
             read:public: Read public deal data (explore offerings); requires no user context
             read:profile: Read user profile information
@@ -1859,7 +2357,7 @@ components:
             read:webhooks: View webhook subscriptions
             write:webhooks: Create, update, and delete webhook subscriptions
         clientCredentials:
-          tokenUrl: https://wefunder.com/oauth/token
+          tokenUrl: https://api.wefunder.com/oauth/token
           scopes:
             read:public: Read public deal data. The only scope a server-side (client_credentials) key may hold — it acts as the app, with no user, so it can never read user-scoped data.
   parameters:
@@ -1875,10 +2373,10 @@ components:
       name: syndicate_id
       in: path
       required: true
-      description: The syndicate ID
+      description: The syndicate's id (`syn_...`).
       schema:
-        type: integer
-      example: 42
+        type: string
+      example: syn_aB3xQ9k2vF8mNp1zT5wY7Qc4
     member_id:
       name: member_id
       in: path
@@ -1955,14 +2453,14 @@ components:
       schema:
         type: string
       example: spv_abc123
-    invite_id:
-      name: invite_id
+    invite_link_id:
+      name: invite_link_id
       in: path
       required: true
-      description: The invite ID (prefixed, e.g. `inv_xyz789`)
+      description: The invite link ID (prefixed, e.g. `il_abc123`)
       schema:
         type: string
-      example: inv_xyz789
+      example: il_abc123
     investment_session_id:
       name: session_id
       in: path
@@ -2348,11 +2846,22 @@ components:
             $ref: '#/components/schemas/Intent'
         meta:
           $ref: '#/components/schemas/PaginationMeta'
-    InvestmentLinkEnvelope:
+    IntentReview:
       type: object
+      description: Lightweight handle to a pending intent a permitted human must approve for the action to take effect. The full intent is not readable through this API; the review_url is the approval link. Returned under `meta.<action>_intent` by the endpoints that server-mint an intent (partner SPV close/cancel, syndicate deal close/finalize).
       properties:
-        data:
-          $ref: '#/components/schemas/InvestmentLink'
+        id:
+          type: string
+          format: uuid
+          description: The intent's id (Intent has a UUID primary key).
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        status:
+          type: string
+          example: pending
+        review_url:
+          type: string
+          format: uri
+          example: https://wefunder.com/intents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/review
     InvestmentListEnvelope:
       type: object
       properties:
@@ -2367,6 +2876,30 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/InvestmentSession'
+        meta:
+          type: object
+          properties:
+            request_id:
+              type: string
+    InvestmentSessionListEnvelope:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/InvestmentSession'
+        meta:
+          type: object
+          properties:
+            has_more:
+              type: boolean
+            page_count:
+              type: integer
+            request_id:
+              type: string
+            next_cursor:
+              type: integer
+              nullable: true
     InvestorEnvelope:
       type: object
       properties:
@@ -2381,20 +2914,35 @@ components:
             $ref: '#/components/schemas/Investor'
         meta:
           $ref: '#/components/schemas/PaginationMeta'
-    InviteEnvelope:
+    InviteLinkEnvelope:
       type: object
       properties:
         data:
-          $ref: '#/components/schemas/Invite'
-    InviteListEnvelope:
+          $ref: '#/components/schemas/InviteLink'
+        meta:
+          type: object
+          properties:
+            request_id:
+              type: string
+    InviteLinkListEnvelope:
       type: object
       properties:
         data:
           type: array
           items:
-            $ref: '#/components/schemas/Invite'
+            $ref: '#/components/schemas/InviteLink'
         meta:
-          $ref: '#/components/schemas/PaginationMeta'
+          type: object
+          properties:
+            has_more:
+              type: boolean
+            page_count:
+              type: integer
+            request_id:
+              type: string
+            next_cursor:
+              type: integer
+              nullable: true
     MarketingPartnerEnvelope:
       type: object
       properties:
@@ -2419,6 +2967,15 @@ components:
             $ref: '#/components/schemas/PartnerInvestment'
         meta:
           $ref: '#/components/schemas/PaginationMeta'
+    PartnerInvestorListEnvelope:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PartnerInvestor'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
     PartnerInviteEnvelope:
       type: object
       properties:
@@ -2439,16 +2996,44 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/PartnerWebhookSubscriptionWithSecret'
-    SpvCloseStatusEnvelope:
+    SpvStatusEnvelope:
       type: object
       properties:
         data:
-          $ref: '#/components/schemas/SpvCloseStatus'
+          $ref: '#/components/schemas/SpvStatus'
+        meta:
+          type: object
+          properties:
+            request_id:
+              type: string
+              example: req_abc123
     SpvEnvelope:
       type: object
       properties:
         data:
           $ref: '#/components/schemas/Spv'
+    SpvCloseIntentEnvelope:
+      type: object
+      description: The SPV plus the pending disburse_funds intent an advisor approves to finalize the close.
+      properties:
+        data:
+          $ref: '#/components/schemas/Spv'
+        meta:
+          type: object
+          properties:
+            disburse_intent:
+              $ref: '#/components/schemas/IntentReview'
+    SpvCancelIntentEnvelope:
+      type: object
+      description: The SPV plus the pending cancel intent an advisor approves to abort the raise and refund investors.
+      properties:
+        data:
+          $ref: '#/components/schemas/Spv'
+        meta:
+          type: object
+          properties:
+            cancel_intent:
+              $ref: '#/components/schemas/IntentReview'
     SpvListEnvelope:
       type: object
       properties:
@@ -2468,6 +3053,28 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/SyndicateDeal'
+    SyndicateDealCloseIntentEnvelope:
+      type: object
+      description: The deal plus the pending close_deal intent a permitted human approves to close it.
+      properties:
+        data:
+          $ref: '#/components/schemas/SyndicateDeal'
+        meta:
+          type: object
+          properties:
+            close_deal_intent:
+              $ref: '#/components/schemas/IntentReview'
+    SyndicateDealFinalizeIntentEnvelope:
+      type: object
+      description: The deal plus the pending finalize_deal intent a permitted human approves to finalize it.
+      properties:
+        data:
+          $ref: '#/components/schemas/SyndicateDeal'
+        meta:
+          type: object
+          properties:
+            finalize_deal_intent:
+              $ref: '#/components/schemas/IntentReview'
     SyndicateDetailEnvelope:
       type: object
       properties:
@@ -2514,13 +3121,13 @@ components:
     Offering:
       type: object
       description: |
-        A public offering (a fundraise), addressed by its `ofr_` external id. Returned by the
+        A public offering (a fundraise), addressed by its id (`ofr_...`). Returned by the
         Explore endpoints. Monetary fields are USD decimal strings — parse them as decimals, not
         floats.
       properties:
         id:
           type: string
-          description: The offering's stable external id.
+          description: The offering's stable id.
           example: ofr_yw3OhusvpfJP4Pk3wRYV1F2R
         type:
           type: string
@@ -2600,7 +3207,7 @@ components:
           properties:
             id:
               type: string
-              description: The company's `co_` external id.
+              description: The company's id (`co_...`).
               example: co_8Kd0aB3xQ9k2vF8mNp1zT5wY
             type:
               type: string
@@ -3260,8 +3867,9 @@ components:
       description: JSON:API resource representing a syndicate
       properties:
         id:
-          type: integer
-          example: 42
+          type: string
+          description: The syndicate's id (`syn_...`).
+          example: syn_aB3xQ9k2vF8mNp1zT5wY7Qc4
         type:
           type: string
           example: syndicate
@@ -3570,71 +4178,319 @@ components:
       description: Same as SyndicateDeal (show and index use the same serializer)
       allOf:
         - $ref: '#/components/schemas/SyndicateDeal'
-    SyndicatePortfolio:
+    PortfolioCompanyRef:
+      type: object
+      description: The company behind a portfolio position or holding.
+      properties:
+        id:
+          type: string
+          description: The company's id (`co_...`)
+          example: co_2bt9eJn6X8C9gnShl63qlzkK
+        name:
+          type: string
+          example: Acme Robotics
+        slug:
+          type: string
+          nullable: true
+          example: acme-robotics
+    PortfolioSecurity:
+      type: object
+      description: |
+        One security offering within the position's fundraise, such as an early bird
+        tier or the regular terms. Most positions have a single entry. A position has
+        several when the round sold multiple tiers, or (investor endpoint) when the
+        investor holds the same offering through more than one legal owner. Entries
+        do not have ids; each is described by its `terms`, and occasionally a round
+        has more than one offering record with identical terms.
+      properties:
+        structure:
+          type: string
+          nullable: true
+          description: |
+            Security type (`safe`, `equity`, `convertible_note`, `revenue_share`,
+            `simple_loan`, `priced_round`, `fund`, `custom`). May be null on legacy
+            offerings — fall back to the position-level `structure`.
+        early_bird:
+          type: boolean
+        terms:
+          type: object
+          description: The offering's issue terms. Fields are null when the term does not apply to the security type.
+          properties:
+            share_price:
+              type: string
+              nullable: true
+              description: Issue price per share as a decimal string
+              example: '10.0'
+            note_cap_cents:
+              type: integer
+              nullable: true
+            note_discount:
+              type: string
+              nullable: true
+            premoney_valuation_cents:
+              type: integer
+              nullable: true
+        cost_basis_cents:
+          type: integer
+        current_value_cents:
+          type: integer
+        unrealized_gain_cents:
+          type: integer
+        realized_gain_cents:
+          type: integer
+        shares_held:
+          type: string
+          nullable: true
+          description: Decimal string. Null for non-share structures and multiple-of-basis valuations.
+        current_share_price:
+          type: string
+          nullable: true
+          description: Decimal string, split-adjusted.
+        invested_at:
+          type: string
+          format: date-time
+          nullable: true
+        owner:
+          type: object
+          nullable: true
+          description: |
+            The legal owner of this stake — `{"kind": "individual"}` for
+            personally-held stakes, `{"kind": "entity", "name": "..."}` for stakes
+            held through the investor's own entity (IRA, LLC). Present on the
+            investor endpoint only.
+          properties:
+            kind:
+              type: string
+              enum:
+                - individual
+                - entity
+            name:
+              type: string
+        investor_count:
+          type: integer
+          description: The number of distinct investors aggregated into this entry. Present on the syndicate endpoint only.
+    PortfolioHolding:
+      type: object
+      description: |
+        A company a fund vehicle invested in — one entry per company, with the
+        status of the most recent investment when the fund invested in the same
+        company more than once.
+      properties:
+        company:
+          $ref: '#/components/schemas/PortfolioCompanyRef'
+        status:
+          type: string
+          enum:
+            - active
+            - failed
+            - exited
+    PortfolioPosition:
+      type: object
+      description: |
+        One position per offering (fundraise). On the investor endpoint the totals
+        sum the authenticated investor's stakes; on the syndicate endpoint they sum
+        every holder's stakes and `investor_count` is present.
+      properties:
+        id:
+          type: string
+          description: The offering's id (`ofr_...`) — a position's identity is its offering.
+          example: ofr_9aKxQ2vF8mNp1zT5wY7Qb3Cd
+        type:
+          type: string
+          enum:
+            - portfolio_position
+            - syndicate_portfolio_position
+        attributes:
+          type: object
+          properties:
+            offering_id:
+              type: string
+              example: ofr_9aKxQ2vF8mNp1zT5wY7Qb3Cd
+            company:
+              $ref: '#/components/schemas/PortfolioCompanyRef'
+            asset_type:
+              type: string
+              enum:
+                - company
+                - fund
+              description: '`fund` for SPV and fund vehicles; the underlying companies appear in `holdings` where recorded.'
+            structure:
+              type: string
+              description: The fundraise's security structure (`safe`, `equity`, `fund`, ...)
+            status:
+              type: string
+              enum:
+                - active
+                - exited
+                - sold
+                - failed
+              description: '`sold` means the stake was transferred away (secondary sale).'
+            exit_reason:
+              type: string
+              nullable: true
+              enum:
+                - ipo
+                - acquisition
+                - buyback
+                - failed
+                - winding_down
+              description: |
+                Why the position ended. Set only for `exited` and `failed`
+                positions — a `sold` position ended with the transfer itself, and
+                some older positions have no recorded ending. `ipo` means the
+                company went public; distributions, if any, appear in
+                `realized_gain_cents`.
+            invested_at:
+              type: string
+              format: date-time
+              nullable: true
+            currency:
+              type: string
+              example: usd
+            cost_basis_cents:
+              type: integer
+            current_value_cents:
+              type: integer
+              description: Estimated current value; based on cost basis when no newer valuation has been recorded.
+            unrealized_gain_cents:
+              type: integer
+              description: Can be negative.
+            realized_gain_cents:
+              type: integer
+            return_multiple:
+              type: string
+              nullable: true
+              description: Decimal string. Null when cost basis is zero.
+              example: '1.6492'
+            shares_held:
+              type: string
+              nullable: true
+            current_share_price:
+              type: string
+              nullable: true
+              description: Null when the position's securities carry different prices — see the per-entry values.
+            securities:
+              type: array
+              items:
+                $ref: '#/components/schemas/PortfolioSecurity'
+            holdings:
+              type: array
+              description: Companies the vehicle invested in, for fund positions. Empty for non-fund positions and for vehicles without recorded holdings.
+              items:
+                $ref: '#/components/schemas/PortfolioHolding'
+            investor_count:
+              type: integer
+              description: The number of distinct investors in this deal. Present on the syndicate endpoint only.
+            as_of:
+              type: string
+              format: date-time
+              description: When the values in this position were last calculated (the oldest timestamp when several underlying records are combined).
+    PortfolioPositionListEnvelope:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PortfolioPosition'
+        meta:
+          type: object
+          properties:
+            has_more:
+              type: boolean
+            page_count:
+              type: integer
+            next_cursor:
+              type: integer
+              nullable: true
+              description: Pass as `cursor` to fetch the next page. Absent on the last page.
+    PortfolioSummaryEnvelope:
       type: object
       properties:
         data:
           type: object
           properties:
-            syndicate_id:
-              type: integer
-            syndicate_name:
+            type:
               type: string
-            snapshot_at:
-              type: string
-              format: date-time
-            totals:
+              example: portfolio_summary
+            attributes:
               type: object
               properties:
-                total_invested_cents:
+                currency:
+                  type: string
+                  example: usd
+                total_cost_basis_cents:
                   type: integer
-                total_positions:
+                total_current_value_cents:
                   type: integer
-                active_positions:
+                total_unrealized_gain_cents:
                   type: integer
-                exited_positions:
+                total_realized_gain_cents:
                   type: integer
-            positions:
-              type: array
-              items:
-                type: object
-                properties:
-                  company:
-                    type: object
-                    properties:
-                      id:
-                        type: integer
-                      name:
-                        type: string
-                      slug:
-                        type: string
-                  investment:
-                    type: object
-                    properties:
-                      amount_cents:
-                        type: integer
-                      structure:
-                        type: string
-                      invested_at:
-                        type: string
-                        format: date-time
-                      status:
-                        type: string
-                        enum:
-                          - active
-                          - exited
-                  valuation:
-                    type: object
-                    properties:
-                      basis_cents:
-                        type: integer
-                      current_estimate_cents:
-                        type: integer
-                        nullable: true
-                      multiple:
-                        type: number
-                        format: float
-                        nullable: true
+                return_multiple:
+                  type: string
+                  nullable: true
+                  example: '1.3107'
+                position_counts:
+                  type: object
+                  description: Distinct offerings per status.
+                  properties:
+                    active:
+                      type: integer
+                    exited:
+                      type: integer
+                    sold:
+                      type: integer
+                    failed:
+                      type: integer
+                as_of:
+                  type: string
+                  format: date-time
+                  nullable: true
+    SyndicatePortfolioSummaryEnvelope:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            type:
+              type: string
+              example: syndicate_portfolio_summary
+            attributes:
+              type: object
+              properties:
+                currency:
+                  type: string
+                  example: usd
+                total_cost_basis_cents:
+                  type: integer
+                total_current_value_cents:
+                  type: integer
+                total_unrealized_gain_cents:
+                  type: integer
+                total_realized_gain_cents:
+                  type: integer
+                return_multiple:
+                  type: string
+                  nullable: true
+                deal_counts:
+                  type: object
+                  description: Distinct deals per status.
+                  properties:
+                    active:
+                      type: integer
+                    exited:
+                      type: integer
+                    sold:
+                      type: integer
+                    failed:
+                      type: integer
+                investor_count:
+                  type: integer
+                  description: Distinct investors across the syndicate's funded deals.
+                as_of:
+                  type: string
+                  format: date-time
+                  nullable: true
     DealInvestor:
       type: object
       description: |
@@ -3801,8 +4657,9 @@ components:
               type: string
               example: Club
             resource_id:
-              type: integer
-              example: 42
+              type: string
+              description: For Club resources, the syndicate's id (`syn_...`).
+              example: syn_aB3xQ9k2vF8mNp1zT5wY7Qc4
             impact_summary:
               type: string
               example: Close the Acme Corp Series A deal. 47 investors have committed $2.3M.
@@ -3878,8 +4735,9 @@ components:
               type: string
               example: Club
             resource_id:
-              type: integer
-              example: 123
+              type: string
+              description: For Club resources, the syndicate's id (`syn_...`).
+              example: syn_aB3xQ9k2vF8mNp1zT5wY7Qc4
             resource_label:
               type: string
               nullable: true
@@ -4098,7 +4956,12 @@ components:
           example: 5000000
         investor_count:
           type: integer
+          description: Investors with an active investment in this SPV.
           example: 12
+        documented_soft_cap:
+          type: integer
+          description: The documented per-SPV investor soft cap (247). Advisory only — it is not enforced, and `investor_count` may exceed it.
+          example: 247
         confirmed_count:
           type: integer
           example: 8
@@ -4172,158 +5035,210 @@ components:
               type: string
               format: date-time
               nullable: true
-    SpvCloseStatus:
+    PartnerInvestor:
+      type: object
+      description: |
+        An investor in an SPV, aggregated across all their investments in it.
+        `full_name` and `email` are null unless the token holds `read:investors:pii`.
+      properties:
+        id:
+          type: string
+          example: usr_abc123
+        type:
+          type: string
+          example: investor
+        attributes:
+          type: object
+          properties:
+            full_name:
+              type: string
+              nullable: true
+              example: Ada Lovelace
+            email:
+              type: string
+              nullable: true
+              example: ada@example.com
+            accredited:
+              type: boolean
+              example: true
+            total_invested_cents:
+              type: integer
+              description: Sum of the investor's active investments in this SPV.
+              example: 500000
+            investment_count:
+              type: integer
+              example: 2
+            created_at:
+              type: string
+              format: date-time
+              nullable: true
+              description: When the investor first invested in this SPV.
+              example: '2025-01-15T12:00:00Z'
+    SpvStatus:
       type: object
       properties:
-        spv_id:
+        id:
           type: string
-          example: spv_abc123
-        status:
+          example: ofr_abc123
+        type:
           type: string
-          enum:
-            - closing
-            - closed
-          example: closing
-        steps:
+          example: spv_status
+        attributes:
+          type: object
+          properties:
+            status:
+              type: string
+              enum:
+                - draft
+                - open
+                - closing
+                - closed
+                - canceled
+              example: closing
+            requires_ops_review:
+              type: boolean
+              description: The offering is awaiting Wefunder review before it can open.
+              example: false
+            disbursement_scheduled:
+              type: boolean
+              description: A disbursement is queued for this SPV but funds have not moved yet.
+              example: true
+            expected_disbursement_at:
+              type: string
+              format: date-time
+              nullable: true
+              description: Estimated date funds will be disbursed — 3 business days from when the close executed and the SPV entered the disbursement queue. Present only while `status` is `closing` (awaiting disbursement); null before close and once funds have moved.
+              example: '2026-07-28T00:00:00Z'
+            finalized_investor_list:
+              type: boolean
+              description: The investor roster has been finalized.
+              example: false
+    BulkInviteLinkCreateInput:
+      type: object
+      required:
+        - invite_links
+      properties:
+        invite_links:
+          type: array
+          maxItems: 100
+          description: Up to 100 per-person invites. Each item must include `email` or `wefunder_user_id`.
+          items:
+            $ref: '#/components/schemas/InviteLinkCreateInput'
+    BulkInviteLinkEnvelope:
+      type: object
+      description: 207 Multi-Status — created links in `data`, per-item failures in `errors`.
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/InviteLink'
+        errors:
           type: array
           items:
             type: object
             properties:
-              name:
-                type: string
-                enum:
-                  - investment_cutoff
-                  - pending_resolution
-                  - final_tally
-                  - disbursement
-                  - cap_table
-                example: pending_resolution
-              status:
-                type: string
-                enum:
-                  - pending
-                  - in_progress
-                  - complete
-                example: in_progress
-              completed_at:
-                type: string
-                format: date-time
-                nullable: true
-              pending_count:
+              index:
                 type: integer
-                nullable: true
-                example: 3
-        estimated_completion:
-          type: string
-          format: date-time
-          nullable: true
-          example: '2025-02-22T00:00:00Z'
-    InviteCreateInput:
-      type: object
-      required:
-        - email
-      properties:
-        email:
-          type: string
-          example: investor@example.com
-        first_name:
-          type: string
-          example: Jane
-        last_name:
-          type: string
-          example: Investor
-        allocation_cents:
-          type: integer
-          nullable: true
-          description: Optional reserved allocation for this investor.
-          example: 5000000
-        message:
-          type: string
-          description: Optional personal message included in the invite email.
-          example: Excited to have you in this deal!
-        send_email:
-          type: boolean
-          default: true
-    Invite:
-      type: object
-      properties:
-        id:
-          type: string
-          example: inv_xyz789
-        type:
-          type: string
-          example: invite
-        attributes:
+                description: Position of the failed item in the request array.
+                example: 2
+              type:
+                type: string
+                example: mutually_exclusive_params
+              detail:
+                type: string
+                example: provide either email or wefunder_user_id, not both
+        meta:
           type: object
           properties:
-            email:
-              type: string
-              example: investor@example.com
-            status:
-              type: string
-              enum:
-                - pending
-                - opened
-                - invested
-                - expired
-                - revoked
-              example: pending
-            allocation_cents:
+            created:
               type: integer
-              nullable: true
-              example: 5000000
-            invest_url:
+            failed:
+              type: integer
+            request_id:
               type: string
-              example: https://wefunder.com/invest/spv_abc123?invite=inv_xyz789
-            investment_id:
-              type: string
-              nullable: true
-              example: invt_def789
-            created_at:
-              type: string
-              format: date-time
-              example: '2025-01-15T10:00:00Z'
-            opened_at:
-              type: string
-              format: date-time
-              nullable: true
-            invested_at:
-              type: string
-              format: date-time
-              nullable: true
-            expires_at:
-              type: string
-              format: date-time
-              nullable: true
-              example: '2025-02-14T10:00:00Z'
-    InvestmentLinkCreateInput:
+    InviteLinkCreateInput:
       type: object
+      description: |
+        All fields optional. With no `email`/`wefunder_user_id` the link is
+        **reusable**; with either it becomes a **per-person** invite. `email` and
+        `wefunder_user_id` are mutually exclusive. `max_uses` is rejected for
+        per-person invites; `send_email` is rejected without a recipient.
       properties:
         allocation_cents:
           type: integer
           nullable: true
-          description: Optional per-investor allocation cap applied to anyone using the link.
+          description: |
+            Budget cap, in cents. Reusable → total budget across all claims of the
+            link. Per-person → the single recipient's cap.
           example: 5000000
         max_uses:
           type: integer
           nullable: true
-          description: Optional cap on how many investments the link can produce.
+          description: Claim cap for a reusable link. Null = unlimited. Not allowed for per-person invites.
           example: 50
-    InvestmentLink:
+        email:
+          type: string
+          nullable: true
+          description: Recipient email. Makes the link per-person. Mutually exclusive with `wefunder_user_id`.
+          example: investor@example.com
+        wefunder_user_id:
+          type: string
+          nullable: true
+          description: Id (`usr_...`) of an existing Wefunder user to invite. Mutually exclusive with `email`; must resolve to a user (else 404).
+          example: usr_existing123
+        first_name:
+          type: string
+          nullable: true
+          description: Recipient first name (per-person only).
+          example: Jane
+        last_name:
+          type: string
+          nullable: true
+          description: Recipient last name (per-person only).
+          example: Investor
+        message:
+          type: string
+          nullable: true
+          description: Personal message included in the invite email (per-person only).
+          example: Excited to have you in this deal!
+        send_email:
+          type: boolean
+          default: true
+          description: Whether to email the invite (per-person only). Rejected on a reusable create.
+    InviteLinkUpdateInput:
       type: object
+      description: Only link terms are mutable; recipient identity, `reuse`, and the URL token cannot change. Other fields are ignored.
+      properties:
+        allocation_cents:
+          type: integer
+          nullable: true
+          example: 5000000
+        max_uses:
+          type: integer
+          nullable: true
+          description: Rejected for per-person invites and when set below the current `uses_count`.
+          example: 50
+    InviteLink:
+      type: object
+      description: |
+        A partner invite link. `id` is the link's `il_...` id (distinct from the URL
+        access `token`, which lives only in `url`). Per-person (`reuse: false`)
+        links carry the extra recipient + derived-status attributes below; reusable
+        links omit them.
       properties:
         id:
           type: string
-          example: il_abc123
+          example: il_aB3xQ9k2vF8mNp1zT5wY7Q
         type:
           type: string
-          example: investment_link
+          example: invite_link
         attributes:
           type: object
           properties:
             url:
               type: string
-              example: https://wefunder.com/invest/spv_abc123?link=il_abc123
+              description: Shareable invite URL. Carries the access token, not the id.
+              example: https://wefunder.com/i/abc123token
             allocation_cents:
               type: integer
               nullable: true
@@ -4337,17 +5252,81 @@ components:
               example: 0
             active:
               type: boolean
+              description: False once the link is canceled (soft-deleted).
               example: true
             created_at:
               type: string
               format: date-time
               example: '2025-01-15T10:00:00Z'
+            email:
+              type: string
+              nullable: true
+              description: Per-person only — recipient email.
+              example: investor@example.com
+            wefunder_user_id:
+              type: string
+              nullable: true
+              description: Per-person only — the recipient's id (`usr_...`), when they are an existing user.
+              example: usr_existing123
+            status:
+              type: string
+              nullable: true
+              description: |
+                Per-person only — derived live, not stored. `pending` (sent, not yet
+                opened), `opened` (link clicked), `invested` (a matching active
+                investment exists), `revoked` (canceled).
+              enum:
+                - pending
+                - opened
+                - invested
+                - revoked
+              example: pending
+            opened_at:
+              type: string
+              format: date-time
+              nullable: true
+              description: Per-person only.
+            invested_at:
+              type: string
+              format: date-time
+              nullable: true
+              description: Per-person only.
+            investment_id:
+              type: string
+              nullable: true
+              description: Per-person only — the id (`inv_...`) of the matching investment.
+              example: inv_def789
+            events:
+              type: array
+              description: Engagement timeline. Present on the show (get-one) endpoint only.
+              items:
+                type: object
+                properties:
+                  event:
+                    type: string
+                    example: send
+                  city:
+                    type: string
+                    nullable: true
+                  country_code:
+                    type: string
+                    nullable: true
+                  created_at:
+                    type: string
+                    format: date-time
     InvestmentSessionCreateInput:
       type: object
       description: |
         Either `email` (invite an unknown recipient) or `wefunder_user_id` (target an
-        existing Wefunder user) should be provided.
+        existing Wefunder user) should be provided. `spv_id` is required on
+        `POST /partner/investment_sessions`; on the deprecated SPV-nested path the
+        SPV comes from the URL instead.
       properties:
+        spv_id:
+          type: string
+          nullable: true
+          description: The SPV to invest into (prefixed, e.g. `spv_abc123`).
+          example: spv_abc123
         email:
           type: string
           nullable: true
@@ -4359,12 +5338,35 @@ components:
         allocation_cents:
           type: integer
           nullable: true
+          minimum: 100
+          multipleOf: 100
+          description: |
+            Fixed investment amount, in cents (whole dollars only). Locks the
+            checkout to exactly this value, overriding the SPV's min/max
+            purchase range. Omit to let the recipient choose an amount within
+            that range.
           example: 5000000
         success_url:
           type: string
           nullable: true
           description: Where to send the recipient after they complete the session.
           example: https://partner.com/done
+        expires_in_hours:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 2160
+          description: Session lifetime in hours (default 720, i.e. 30 days).
+          example: 72
+        metadata:
+          type: object
+          nullable: true
+          description: Free-form key/value pairs stored with the session and echoed back on reads.
+        intent_id:
+          type: string
+          nullable: true
+          description: The Intent that gated the SPV's creation, for audit; stored in `metadata`.
+          example: int_abc123
     InvestmentSession:
       type: object
       properties:
@@ -4401,6 +5403,7 @@ components:
             allocation_cents:
               type: integer
               nullable: true
+              description: The fixed amount the session locks to, in cents; null when the recipient chooses their own amount.
               example: 5000000
             kyc_status:
               type: string
@@ -4424,6 +5427,9 @@ components:
               nullable: true
               description: Populated once the session completes successfully.
               example: invt_def789
+            metadata:
+              type: object
+              description: The key/value pairs supplied at creation.
             created_at:
               type: string
               format: date-time
@@ -4432,6 +5438,21 @@ components:
               type: string
               format: date-time
               nullable: true
+            events:
+              type: array
+              description: Durable platform events recorded about this session, oldest first. Only present on the single-session GET.
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    example: evt_abc123
+                  event:
+                    type: string
+                    example: investment_session.completed
+                  occurred_at:
+                    type: string
+                    format: date-time
     PartnerInvestment:
       type: object
       properties:
