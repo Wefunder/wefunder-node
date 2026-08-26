@@ -115,24 +115,12 @@ If several application instances can use the same OAuth connection, serialize re
 Common resources are available through typed namespaces:
 
 ```ts
-const offering = await wf.offerings.get("ofr_example");
-const currentUser = await wf.users.me();
+const offerings = await wf.offerings.list({ sort: "newest" });
 const investments = await wf.investments.list();
-```
-
-### Portfolio
-
-Portfolio endpoints require a user token with `read:investments`.
-
-```ts
 const portfolio = await wf.portfolio.get();
-console.log(portfolio.attributes?.total_current_value_cents);
-
-const positions = await wf.portfolio.positions.list({
-  status: "active",
-  per_page: 25,
-});
 ```
+
+The methods available to a client depend on its OAuth scopes. Consult the [API reference](https://docs.wefunder.com/api-reference) for the scope required by each endpoint.
 
 The API base URL is `https://api.wefunder.com`. Paths are version-free; the SDK sends the API version in the `Wefunder-Version` request header.
 
