@@ -1,32 +1,29 @@
-# @wefunder/sdk (beta)
+# @wefunder/sdk
 
 [![CI](https://github.com/Wefunder/wefunder-node/actions/workflows/ci.yml/badge.svg)](https://github.com/Wefunder/wefunder-node/actions/workflows/ci.yml)
 
-Official TypeScript SDK for the [Wefunder API](https://docs.wefunder.com/api-reference).
+The official TypeScript SDK for the [Wefunder API](https://docs.wefunder.com/api-reference).
 
-> **Beta.** The package is `0.x` — breaking changes are possible while we
-> stabilize. Feedback welcome.
+The SDK is currently in beta. Releases may include breaking changes until the API reaches `1.0`.
+
+## Install
 
 ```bash
 npm install @wefunder/sdk@beta
 ```
 
-While in beta, releases publish to the `@beta` dist-tag (npm reserves `latest` for the
-eventual stable release). Node 20+ (uses the global `fetch`). ESM and CommonJS both supported.
+Node 20 or newer is required. Both ESM and CommonJS are supported.
 
-### Scope & versioning
+## Authentication
 
-- **Surface:** this release covers the **stable + beta** public API (offerings,
-  investments, campaigns, syndicates, intents, attribution). Preview-only endpoints
-  (the partner SPV / sandbox-simulation surface) are intentionally **not** included yet.
-- **API version:** the SDK sends `Wefunder-Version: 2025-01-15` on every request,
-  forward-compatible with Wefunder's dated-version model. **The API does not resolve
-  this header yet**, so version pinning is not enforced server-side until that ships —
-  the header is correct in shape and will start taking effect transparently.
+Wefunder supports two OAuth grants:
 
-## Quickstart (server-to-server)
+- Use `client_credentials` for server-to-server access to public data.
+- Use `authorization_code` with PKCE when acting on behalf of a user.
 
-The fastest path: a `client_credentials` grant with a sandbox token, no user redirect.
+### Server-to-server
+
+Create a client with your application's client ID and secret:
 
 ```ts
 import { Wefunder } from "@wefunder/sdk";
@@ -37,226 +34,217 @@ const wf = await Wefunder.fromClientCredentials({
   scopes: ["read:public"],
 });
 
-// A client_credentials token can only hold `read:public` — it acts as your app,
-// with no user. So it can browse public offerings, but NOT user-scoped data.
 const page = await wf.offerings.list();
-console.log(`${page.data?.length} offerings`);
 ```
 
-> **`wf.users.me()` won't work with `client_credentials`.** `/users/me` requires
-> `read:profile`, a user-context scope — calling it with a `client_credentials`
-> token throws `WefunderError` (`403 insufficient_scope`). To read user data, use
-> the `authorization_code` + PKCE flow below and request `read:profile`.
+Client-credentials tokens represent the application, not a user. They cannot be used for user-scoped endpoints such as `wf.users.me()` or `wf.portfolio.get()`.
 
-## Authentication
+The SDK obtains a new token automatically when a client-credentials token expires.
 
-The SDK supports both OAuth 2.0 grants the API offers.
+### User authorization with PKCE
 
-### `client_credentials` (server-side)
-
-`Wefunder.fromClientCredentials({ clientId, clientSecret, scopes })` — see above.
-These tokens are short-lived and have no refresh token, but the client keeps the
-grant inputs and **auto-re-mints** on expiry or a `401` — so a long-lived server can
-hold one `wf` and never hand-roll token recovery.
-
-### `authorization_code` + PKCE (acting on behalf of a user)
+Generate the authorization URL on your server. Store the state and PKCE verifier in the user's session before redirecting them:
 
 ```ts
-import { generatePkce, createAuthorizationUrl, exchangeCode, Wefunder } from "@wefunder/sdk";
+import { createAuthorizationUrl, generatePkce } from "@wefunder/sdk";
+import { randomBytes } from "node:crypto";
 
-// 1. Before redirecting, generate PKCE + a state token and stash them in the session.
 const pkce = generatePkce();
-const url = createAuthorizationUrl({
-  clientId, redirectUri, scopes: ["read:investments"], state, pkce,
-});
-// redirect the user to `url`
+const state = randomBytes(32).toString("base64url");
 
-// 2. On the callback, exchange the code (+ verifier) for tokens.
-const tokens = await exchangeCode({
-  clientId, code, redirectUri, codeVerifier: pkce.codeVerifier,
-});
+await saveOAuthAttempt({ state, codeVerifier: pkce.codeVerifier });
 
-// 3. Build a client. Pass clientId so it can auto-refresh on expiry.
-const wf = new Wefunder({ tokens, clientId, onTokenRefresh: (t) => saveToDb(t) });
+const authorizationUrl = createAuthorizationUrl({
+  clientId,
+  redirectUri,
+  scopes: ["read:investments"],
+  state,
+  pkce,
+});
 ```
 
-### Refresh tokens rotate — persist every refresh
-
-Wefunder **rotates** refresh tokens: each refresh returns a *new* refresh token and
-invalidates the old one. The SDK refreshes automatically (proactively before expiry,
-and on a `401`), coalescing concurrent refreshes into one. You just have to persist
-the rotated token so it survives a restart:
+On the callback, validate the state and exchange the authorization code:
 
 ```ts
+import { exchangeCode, Wefunder } from "@wefunder/sdk";
+
+const attempt = await consumeOAuthAttempt(state);
+if (!attempt) throw new Error("Invalid OAuth state");
+
+const tokens = await exchangeCode({
+  clientId,
+  clientSecret, // optional for public clients
+  code,
+  redirectUri,
+  codeVerifier: attempt.codeVerifier,
+});
+
 const wf = new Wefunder({
   tokens,
   clientId,
+  clientSecret,
   store: {
-    load: () => db.loadTokens(),
-    save: (t) => db.saveTokens(t), // called on every rotation
+    save: (nextTokens) => saveTokens(nextTokens),
   },
 });
 ```
 
-### Hosts (advanced)
+Keep access tokens, refresh tokens, OAuth state, and PKCE verifiers on the server. Encrypt persisted tokens at rest.
 
-OAuth uses two hosts, independently overridable:
+### Refresh tokens
 
-- **token host** — `/token` + refresh (`fromClientCredentials`, `exchangeCode`, refresh). Defaults to `https://api.wefunder.com/oauth`. The edge gateway routes by the credential's mode (a `pk_test_` grant mints in sandbox, `pk_live_` in live), so one host serves both. Override via `tokenBaseUrl` (or set both with `oauthBaseUrl`).
-- **authorize host** — the browser consent redirect (`createAuthorizationUrl`). Picked from the `client_id`: `pk_test_` → `https://oauth.wefunder-sandbox.com/oauth` (sandbox consent), otherwise `https://wefunder.com/oauth` (live). Override via `authorizeBaseUrl`.
+Refresh tokens rotate. When the SDK refreshes an access token, it calls `store.save()` with the new token set before continuing the request. Persist the entire token set each time.
 
-The **API base** is `WefunderOptions.baseUrl` (default `https://api.wefunder.com`, version-free). The API version is pinned by the `Wefunder-Version` header, not the path; `/api/v2` remains a working back-compat alias.
+Load the saved tokens yourself when constructing a client after a process restart:
+
+```ts
+const tokens = await loadTokens();
+
+const wf = new Wefunder({
+  tokens,
+  clientId,
+  clientSecret,
+  store: { save: saveTokens },
+});
+```
+
+If several application instances can use the same OAuth connection, serialize refreshes for that connection. This prevents two instances from trying to rotate the same refresh token at once.
+
+## Calling the API
+
+Common resources are available through typed namespaces:
+
+```ts
+const offering = await wf.offerings.get("ofr_example");
+const currentUser = await wf.users.me();
+const investments = await wf.investments.list();
+```
+
+### Portfolio
+
+Portfolio endpoints require a user token with `read:investments`.
+
+```ts
+const portfolio = await wf.portfolio.get();
+console.log(portfolio.attributes?.total_current_value_cents);
+
+const positions = await wf.portfolio.positions.list({
+  status: "active",
+  per_page: 25,
+});
+```
+
+The API base URL is `https://api.wefunder.com`. Paths are version-free; the SDK sends the API version in the `Wefunder-Version` request header.
 
 ## Pagination
 
-List endpoints auto-paginate. The cursor is opaque — you never construct it. List
-methods take the endpoint's documented query params, and they're preserved across pages.
+List namespaces provide three ways to work with paginated results:
 
 ```ts
-// Stream lazily (one page fetched at a time):
-for await (const inv of wf.investments.all()) {
-  console.log(inv.id);
-}
+// Fetch one page and inspect its cursor.
+const page = await wf.offerings.list({ sort: "newest" });
+console.log(page.data, page.meta?.next_cursor);
 
-// Query params are forwarded — e.g. sort the offerings browser (sort is preserved
-// on every page):
+// Fetch pages lazily.
 for await (const offering of wf.offerings.all({ sort: "most_raised" })) {
   console.log(offering.id);
 }
 
-// Or collect everything:
-const all = await wf.investments.collect();
-
-// Or drive pages yourself (gives you `meta`):
-const page = await wf.offerings.list({ sort: "newest" });
-console.log(page.data, page.meta?.next_cursor);
+// Fetch all results into an array.
+const investments = await wf.investments.collect();
 ```
 
-## Portfolio
+Cursors are opaque. Pass the value returned by the API without modifying it.
 
-Portfolio endpoints require an authorization-code token with
-`read:investments`.
+## Errors and retries
 
-```ts
-const summary = await wf.portfolio.get();
-console.log(summary.attributes?.total_current_value_cents);
-
-for await (const position of wf.portfolio.positions.all({ status: "active" })) {
-  console.log(position.id, position.attributes?.current_value_cents);
-}
-```
-
-## Errors
-
-Failed requests throw `WefunderError` with the fields from the API's error envelope,
-including the `request_id` (read from the response body) — quote it in support tickets.
+API failures throw `WefunderError`:
 
 ```ts
 import { WefunderError } from "@wefunder/sdk";
 
 try {
-  await wf.syndicates.get(123);
-} catch (err) {
-  if (err instanceof WefunderError) {
-    console.error(err.status, err.type, err.message, err.requestId);
+  await wf.syndicates.get("syn_example");
+} catch (error) {
+  if (error instanceof WefunderError) {
+    console.error(error.status, error.type, error.message, error.requestId);
   }
 }
 ```
 
-Idempotent `GET`s are retried automatically on transient `5xx`/network errors and on
-`429` (honoring `X-RateLimit-Reset`). Writes are never auto-retried.
+The SDK retries idempotent `GET` requests after transient network errors, `5xx` responses, and rate limits. Write requests are not retried automatically.
 
 ## Webhooks
 
-Verify and parse webhook deliveries. Pass the **raw** request body (not a re-serialized
-object) and the headers:
+Use `constructEvent` to verify a webhook signature and parse its payload. Signature verification requires the raw request body.
 
 ```ts
 import { constructEvent } from "@wefunder/sdk";
 
 app.post("/webhooks", express.raw({ type: "application/json" }), (req, res) => {
-  let event;
   try {
-    event = constructEvent(req.body.toString("utf8"), req.headers, process.env.WEBHOOK_SECRET!);
+    const event = constructEvent(
+      req.body.toString("utf8"),
+      req.headers,
+      process.env.WEFUNDER_WEBHOOK_SECRET!,
+    );
+
+    queueWebhook(event);
+    res.sendStatus(200);
   } catch {
-    return res.status(400).send("invalid signature");
+    res.status(400).send("Invalid signature");
   }
-  // event.event, event.deliveryId, event.data
-  res.sendStatus(200);
 });
 ```
 
-## Escape hatch: `wf.raw`
+## Generated operations
 
-Ergonomic namespaces cover the common GA resources. Every generated operation is also
-available, pre-bound, under `wf.raw`. Raw ops return the low-level `{ data, error,
-response }` result; wrap them in `wf.unwrap(...)` to get the same typed-error +
-envelope handling the namespaces use (a `WefunderError` with `request_id` on failure):
+Typed namespaces cover the most common resources. Every operation in the public OpenAPI specification is also available under `wf.raw`.
 
 ```ts
-const members = await wf.unwrap(wf.raw.listSyndicateMembers({ path: { syndicate_id: 1 } }));
-
-// Or handle the raw result yourself:
-const res = await wf.raw.listSyndicateMembers({ path: { syndicate_id: 1 } });
+const members = await wf.unwrap(
+  wf.raw.listSyndicateMembers({
+    path: { syndicate_id: "syn_example" },
+  }),
+);
 ```
+
+Raw operations return `{ data, error, response }`. Passing the result to `wf.unwrap()` applies the same error handling used by the resource namespaces.
 
 ## Development
 
 ```bash
 npm install
-npm run generate   # regenerate src/generated from spec/openapi.yaml
 npm run typecheck
-npm test           # hermetic unit tests (no network)
-npm run test:e2e   # live sandbox E2E — needs WEFUNDER_CLIENT_ID/SECRET (or a .env); auto-skips otherwise
+npm run typecheck:examples
+npm test
 npm run build
 ```
 
-The live E2E hits `api.wefunder.com` with a sandbox app's `client_credentials`. Put
-the credentials in a gitignored `.env` (`WEFUNDER_CLIENT_ID=` / `WEFUNDER_CLIENT_SECRET=`).
+`npm run test:e2e` runs against the sandbox when `WEFUNDER_CLIENT_ID` and `WEFUNDER_CLIENT_SECRET` are set.
 
-The typed layer in `src/generated/` is produced by `@hey-api/openapi-ts` from
-`spec/openapi.yaml` and is never hand-edited. The hand-written shell in `src/` wraps it.
+Generated files in `src/generated/` come from `spec/openapi.yaml` and should not be edited by hand.
 
-### Syncing the spec (maintainers)
+### Updating the API specification
 
-`spec/openapi.yaml` is a vendored copy of the **public tier** (stable + beta) of the
-canonical Wefunder swagger. Preview/internal operations are excluded by design. To
-refresh it from a local wefunder checkout:
+Run the sync command against a local checkout of the Wefunder application, then regenerate the client:
 
 ```bash
-WEFUNDER_REPO=/path/to/wefunder npm run sync-spec
+npm run sync-spec -- /path/to/wefunder
 npm run generate
-git add spec src/generated   # commit both together
+npm run typecheck
+npm test
 ```
 
-`sync-spec` delegates filtering to the wefunder repo's own `build-filtered-spec.js`,
-so the public-tier definition can't drift between the two repos. CI's
-`generated code matches spec` job verifies `src/generated` matches the committed spec;
-it cannot reach the private canonical swagger, so run `sync-spec` before cutting a
-release. (`npm test` stays hermetic.)
+Commit the specification and generated client together.
 
-### Releasing (maintainers)
+### Releasing
 
-Releases publish from CI with provenance — no manual `npm publish` or OTP. Bump the
-version and push the tag; the `Release` workflow (`.github/workflows/release.yml`,
-triggered on `v*` tags) runs the `prepublishOnly` gate and publishes:
+Releases are published by GitHub Actions. From a clean `main` branch:
 
 ```bash
-git checkout main && git pull        # clean tree, on main
-npm version prerelease --preid beta  # 0.1.0-beta.N → N+1, commits + tags v0.1.0-beta.N+1
-git push --follow-tags               # pushes the commit + tag → CI publishes
+npm version prerelease --preid beta
+git push --follow-tags
 ```
 
-The workflow verifies the tag matches `package.json`, then publishes — prerelease
-versions (e.g. `0.1.0-beta.N`) to the **`beta`** dist-tag (npm requires an explicit tag
-for prereleases), stable versions to `latest`. For a stable release use
-`npm version patch|minor|major` (no `--preid`).
-
-**Auth is npm Trusted Publishing (OIDC) — no token to store.** npm exchanges the
-workflow's GitHub OIDC token for a short-lived credential at publish time, and
-provenance is generated automatically (verified-build badge on npmjs.com).
-
-**One-time setup:** on npmjs.com, `@wefunder/sdk` → **Settings → Trusted Publishing →
-GitHub Actions**, with org/user `Wefunder`, repository `wefunder-node`, workflow
-`release.yml` (leave Environment blank). No repo secret needed. (Requires this public
-repo + public package — both true.)
+The release workflow runs the package checks and publishes prereleases to npm's `beta` tag.
