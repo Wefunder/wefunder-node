@@ -9,6 +9,11 @@ export {
   type Mode,
   type OfferingSort,
   type IntentStatus,
+  type PortfolioFilters,
+  type PortfolioStatus,
+  type PortfolioPositionsQuery,
+  type PortfolioPositionsFilters,
+  type PortfolioSummary,
 } from "./client.js";
 
 export { WefunderError, WefunderAuthError, REQUEST_ID_HEADER } from "./errors.js";

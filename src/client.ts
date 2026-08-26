@@ -20,14 +20,28 @@ import type {
   Syndicate,
   Intent,
   AttributionMe,
+  PortfolioPosition,
+  PortfolioSummaryEnvelope,
   ListOfferingsData,
   ListIntentsData,
+  GetPortfolioData,
+  ListPortfolioPositionsData,
 } from "./generated/types.gen.js";
 
 /** Documented `sort` values for the offerings list, from the generated op. */
 export type OfferingSort = NonNullable<ListOfferingsData["query"]>["sort"];
 /** Documented `status` filter values for the intents list, from the generated op. */
 export type IntentStatus = NonNullable<ListIntentsData["query"]>["status"];
+/** Portfolio summary filters shared with the positions endpoint. */
+export type PortfolioFilters = NonNullable<GetPortfolioData["query"]>;
+/** Portfolio status values documented by the API. */
+export type PortfolioStatus = NonNullable<PortfolioFilters["status"]>;
+/** Filters and pagination controls for portfolio positions. */
+export type PortfolioPositionsQuery = NonNullable<ListPortfolioPositionsData["query"]>;
+/** Portfolio position filters, excluding the cursor managed by auto-pagination. */
+export type PortfolioPositionsFilters = Omit<PortfolioPositionsQuery, "cursor">;
+/** The summary resource inside the API's data envelope. */
+export type PortfolioSummary = NonNullable<PortfolioSummaryEnvelope["data"]>;
 
 // Version-free base — the edge gateway serves the API at the host root; `/api/v2`
 // remains a working back-compat alias. The API version is pinned via the
@@ -260,6 +274,20 @@ export class Wefunder {
     list: this.#page<Investment>(ops.listInvestments as never),
     all: (): AsyncGenerator<Investment> => paginate((cursor) => this.investments.list({ cursor })),
     collect: (): Promise<Investment[]> => collect((cursor) => this.investments.list({ cursor })),
+  };
+
+  portfolio = {
+    get: (query?: PortfolioFilters) =>
+      this.#unwrapData<PortfolioSummary>(ops.getPortfolio({ client: this.#client, query })),
+    positions: {
+      list: this.#page<PortfolioPosition, PortfolioPositionsQuery>(
+        ops.listPortfolioPositions as never,
+      ),
+      all: (query?: PortfolioPositionsFilters): AsyncGenerator<PortfolioPosition> =>
+        paginate((cursor) => this.portfolio.positions.list({ ...query, cursor: cursor as number })),
+      collect: (query?: PortfolioPositionsFilters): Promise<PortfolioPosition[]> =>
+        collect((cursor) => this.portfolio.positions.list({ ...query, cursor: cursor as number })),
+    },
   };
 
   campaigns = {

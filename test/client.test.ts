@@ -158,6 +158,65 @@ describe("auto-pagination through the client", () => {
   });
 });
 
+describe("portfolio namespace", () => {
+  it("unwraps the portfolio summary and forwards filters", async () => {
+    const { fetch, calls } = makeFetch(() =>
+      json({
+        data: {
+          type: "portfolio_summary",
+          attributes: { total_current_value_cents: 123_45 },
+        },
+      }),
+    );
+    const wf = new Wefunder({ accessToken: "at_live_x", fetch });
+
+    const summary = await wf.portfolio.get({ status: "active", company: "co_123" });
+
+    expect(summary.attributes?.total_current_value_cents).toBe(123_45);
+    const url = new URL(calls[0]!.url);
+    expect(url.pathname).toBe("/portfolio");
+    expect(url.searchParams.get("status")).toBe("active");
+    expect(url.searchParams.get("company")).toBe("co_123");
+  });
+
+  it("streams positions and preserves filters across pages", async () => {
+    const calls: URL[] = [];
+    const { fetch } = makeFetch((call) => {
+      const url = new URL(call.url);
+      calls.push(url);
+      return url.searchParams.has("cursor")
+        ? json({ data: [{ id: "ofr_2" }], meta: { has_more: false, next_cursor: null } })
+        : json({ data: [{ id: "ofr_1" }], meta: { has_more: true, next_cursor: 42 } });
+    });
+    const wf = new Wefunder({ accessToken: "at_live_x", fetch });
+    const ids: unknown[] = [];
+
+    for await (const position of wf.portfolio.positions.all({
+      status: "exited",
+      company: "co_123",
+      per_page: 10,
+    })) {
+      ids.push(position.id);
+    }
+
+    expect(ids).toEqual(["ofr_1", "ofr_2"]);
+    expect(calls.map((url) => url.pathname)).toEqual([
+      "/portfolio/positions",
+      "/portfolio/positions",
+    ]);
+    expect(calls.map((url) => url.searchParams.get("status"))).toEqual([
+      "exited",
+      "exited",
+    ]);
+    expect(calls.map((url) => url.searchParams.get("company"))).toEqual([
+      "co_123",
+      "co_123",
+    ]);
+    expect(calls.map((url) => url.searchParams.get("per_page"))).toEqual(["10", "10"]);
+    expect(calls[1]!.searchParams.get("cursor")).toBe("42");
+  });
+});
+
 describe("client_credentials auto-re-mint (stress-test A)", () => {
   it("re-mints on 401 using the stored grant inputs, then retries", async () => {
     let mints = 0;

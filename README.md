@@ -132,6 +132,20 @@ const page = await wf.offerings.list({ sort: "newest" });
 console.log(page.data, page.meta?.next_cursor);
 ```
 
+## Portfolio
+
+Portfolio endpoints require an authorization-code token with
+`read:investments`.
+
+```ts
+const summary = await wf.portfolio.get();
+console.log(summary.attributes?.total_current_value_cents);
+
+for await (const position of wf.portfolio.positions.all({ status: "active" })) {
+  console.log(position.id, position.attributes?.current_value_cents);
+}
+```
+
 ## Errors
 
 Failed requests throw `WefunderError` with the fields from the API's error envelope,
