@@ -10,7 +10,7 @@ export async function example(wf: Wefunder) {
       body: {
         action_name: "syndicates.close_deal",
         resource_type: "Club",
-        resource_id: 42,
+        resource_id: "syn_example",
         params: { fundraise_id: 99 },
         // Safe to retry: an existing pending/executed intent with this key is returned instead.
         idempotency_key: "close-acme-series-a",
