@@ -156,6 +156,15 @@ export type SpvWithMetaEnvelope = {
   data?: Spv;
   meta?: {
     request_id?: string;
+    /**
+     * How the SPV's fee terms were sourced. Present only when the fee-table-v2 pricing path is active.
+     */
+    fees?: {
+      /**
+       * `request` when the caller supplied a carry or management fee; `api_default` when both fell back to the documented defaults.
+       */
+      source?: "request" | "api_default";
+    };
   };
 };
 
@@ -258,11 +267,8 @@ export type InvestmentSessionEnvelope = {
 
 export type InvestmentSessionListEnvelope = {
   data?: Array<InvestmentSession>;
-  meta?: {
-    has_more?: boolean;
-    page_count?: number;
+  meta?: PaginationMeta & {
     request_id?: string;
-    next_cursor?: number | null;
   };
 };
 
@@ -284,11 +290,8 @@ export type InviteLinkEnvelope = {
 
 export type InviteLinkListEnvelope = {
   data?: Array<InviteLink>;
-  meta?: {
-    has_more?: boolean;
-    page_count?: number;
+  meta?: PaginationMeta & {
     request_id?: string;
-    next_cursor?: number | null;
   };
 };
 
@@ -306,12 +309,16 @@ export type PartnerInvestmentEnvelope = {
 
 export type PartnerInvestmentListEnvelope = {
   data?: Array<PartnerInvestment>;
-  meta?: PaginationMeta;
+  meta?: PaginationMeta & {
+    request_id?: string;
+  };
 };
 
 export type PartnerInvestorListEnvelope = {
   data?: Array<PartnerInvestor>;
-  meta?: PaginationMeta;
+  meta?: PaginationMeta & {
+    request_id?: string;
+  };
 };
 
 export type PartnerInviteEnvelope = {
@@ -339,6 +346,9 @@ export type SpvStatusEnvelope = {
 
 export type SpvEnvelope = {
   data?: Spv;
+  meta?: {
+    request_id?: string;
+  };
 };
 
 /**
@@ -347,6 +357,7 @@ export type SpvEnvelope = {
 export type SpvCloseIntentEnvelope = {
   data?: Spv;
   meta?: {
+    request_id?: string;
     disburse_intent?: IntentReview;
   };
 };
@@ -357,13 +368,16 @@ export type SpvCloseIntentEnvelope = {
 export type SpvCancelIntentEnvelope = {
   data?: Spv;
   meta?: {
+    request_id?: string;
     cancel_intent?: IntentReview;
   };
 };
 
 export type SpvListEnvelope = {
   data?: Array<Spv>;
-  meta?: PaginationMeta;
+  meta?: PaginationMeta & {
+    request_id?: string;
+  };
 };
 
 export type SyndicateDealDetailEnvelope = {
@@ -567,8 +581,11 @@ export type Campaign = {
 };
 
 export type PaginationMeta = {
-  count?: number;
   has_more?: boolean;
+  /**
+   * Number of records returned in this page.
+   */
+  page_count?: number;
   next_cursor?: number | null;
 };
 
@@ -1589,6 +1606,14 @@ export type SpvTerms = {
   minimum_investment_cents: number;
   target_raise_cents: number;
   max_raise_cents?: number | null;
+  /**
+   * Carried-interest rate as a decimal percent string (e.g. "10.0"). Null when unset. On create, may be supplied as a number or string; the response always renders a string.
+   */
+  carried_interest_percent?: string | null;
+  /**
+   * Management-fee rate as a decimal percent string (e.g. "2.0"). Null when unset. On create, may be supplied as a number or string; the response always renders a string.
+   */
+  management_fee_percent?: string | null;
 };
 
 export type SpvSettings = {
@@ -1617,9 +1642,16 @@ export type TargetCompanyInput = {
   state_of_incorporation?: string;
 };
 
+/**
+ * Exactly one of `target_company` (create a new target company) or `target_company_id` (reference an existing one) must be supplied.
+ */
 export type SpvCreateInput = {
   name: string;
-  target_company: TargetCompanyInput;
+  target_company?: TargetCompanyInput;
+  /**
+   * External id (`co_…`) of an existing company to use as the target. Mutually exclusive with `target_company`.
+   */
+  target_company_id?: string;
   terms: SpvTerms;
   settings?: SpvSettings;
   /**
@@ -1628,6 +1660,17 @@ export type SpvCreateInput = {
   metadata?: {
     [key: string]: unknown;
   };
+  /**
+   * Optional carry-split partners. Each generates a draft carry agreement; the fund-manager signature and partner emails are a separate step.
+   */
+  deal_partners?: Array<{
+    name: string;
+    email?: string;
+    /**
+     * Share of the carry pool allocated to this partner.
+     */
+    carry_percentage?: number;
+  }>;
 };
 
 export type SpvMetrics = {
@@ -1640,8 +1683,6 @@ export type SpvMetrics = {
    * The documented per-SPV investor soft cap (247). Advisory only — it is not enforced, and `investor_count` may exceed it.
    */
   documented_soft_cap?: number;
-  confirmed_count?: number;
-  pending_count?: number;
   average_investment_cents?: number;
 };
 
@@ -1650,7 +1691,7 @@ export type Spv = {
   type?: string;
   attributes?: {
     name?: string;
-    status?: "draft" | "open" | "closing" | "closed" | "canceled" | "dissolved";
+    status?: "draft" | "open" | "closing" | "closed" | "canceled";
     series_name?: string;
     invest_url?: string | null;
     target_company?: {
@@ -1663,9 +1704,6 @@ export type Spv = {
       [key: string]: unknown;
     };
     created_at?: string;
-    opened_at?: string | null;
-    closing_at?: string | null;
-    closed_at?: string | null;
   };
 };
 
@@ -1870,7 +1908,7 @@ export type InviteLink = {
  */
 export type InvestmentSessionCreateInput = {
   /**
-   * The SPV to invest into (prefixed, e.g. `spv_abc123`).
+   * The SPV to invest into (prefixed, e.g. `ofr_abc123`).
    */
   spv_id?: string | null;
   email?: string | null;
@@ -1924,9 +1962,8 @@ export type InvestmentSession = {
      * The fixed amount the session locks to, in cents; null when the recipient chooses their own amount.
      */
     allocation_cents?: number | null;
-    kyc_status?: "pending" | "passed" | "failed";
-    funding_status?:
-      "pending" | "succeeded" | "card_declined" | "insufficient_funds";
+    kyc_status?: "pending" | "passed";
+    funding_status?: "pending" | "succeeded";
     /**
      * Populated once the session completes successfully.
      */
@@ -1950,27 +1987,29 @@ export type InvestmentSession = {
   };
 };
 
+/**
+ * An investment in an SPV, one row per investment. `investor.full_name` and
+ * `investor.email` are null unless the token holds `read:investors:pii`.
+ *
+ */
 export type PartnerInvestment = {
   id?: string;
   type?: string;
   attributes?: {
     amount_cents?: number;
-    status?:
-      | "pending"
-      | "awaiting_payment"
-      | "pending_accreditation"
-      | "confirmed"
-      | "canceled";
-    spv_id?: string;
-    investor_id?: string | null;
-    accreditation?: {
-      type?: "self_attestation" | "verified";
-      status?: "pending" | "passed" | "failed" | "expired";
-      basis?: string | null;
-      submitted_at?: string | null;
-    } | null;
-    confirmed_at?: string | null;
-    created_at?: string;
+    /**
+     * `confirmed` once the investment is soft-confirmed; otherwise `pending`.
+     */
+    status?: "pending" | "confirmed";
+    /**
+     * When the investment was applied (falls back to created_at).
+     */
+    invested_at?: string | null;
+    investor?: {
+      id?: string;
+      full_name?: string | null;
+      email?: string | null;
+    };
   };
 };
 
@@ -2108,7 +2147,7 @@ export type Cursor = number;
 export type WebhookId = number;
 
 /**
- * The SPV ID (prefixed, e.g. `spv_abc123`)
+ * The SPV ID (prefixed, e.g. `ofr_abc123`)
  */
 export type SpvId = string;
 
@@ -5062,3 +5101,1249 @@ export type RevokePartnerInviteResponses = {
 
 export type RevokePartnerInviteResponse =
   RevokePartnerInviteResponses[keyof RevokePartnerInviteResponses];
+
+export type ListPartnerSpvsData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Page size (default 25, max 100)
+     */
+    per_page?: number;
+    /**
+     * Cursor-based pagination token. Use the `next_cursor` value from the previous response's
+     * `meta` object to retrieve the next page of results. Omit this parameter to retrieve the
+     * first page.
+     *
+     */
+    cursor?: number;
+  };
+  url: "/partner/spvs";
+};
+
+export type ListPartnerSpvsErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+};
+
+export type ListPartnerSpvsError =
+  ListPartnerSpvsErrors[keyof ListPartnerSpvsErrors];
+
+export type ListPartnerSpvsResponses = {
+  /**
+   * Successful response
+   */
+  200: SpvListEnvelope;
+};
+
+export type ListPartnerSpvsResponse =
+  ListPartnerSpvsResponses[keyof ListPartnerSpvsResponses];
+
+export type CreatePartnerSpvData = {
+  body: {
+    spv: SpvCreateInput;
+  };
+  headers?: {
+    /**
+     * A unique client-generated key that makes a write request safe to retry. If a request
+     * is retried within 24 hours with the same key and body, the original result is returned
+     * instead of performing the operation again. Strongly recommended on all `POST` requests
+     * that create resources.
+     *
+     */
+    "Idempotency-Key"?: string;
+  };
+  path?: never;
+  query?: never;
+  url: "/partner/spvs";
+};
+
+export type CreatePartnerSpvErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * One or more request fields failed validation.
+   */
+  422: ValidationError;
+};
+
+export type CreatePartnerSpvError =
+  CreatePartnerSpvErrors[keyof CreatePartnerSpvErrors];
+
+export type CreatePartnerSpvResponses = {
+  /**
+   * SPV created
+   */
+  201: SpvWithMetaEnvelope;
+};
+
+export type CreatePartnerSpvResponse =
+  CreatePartnerSpvResponses[keyof CreatePartnerSpvResponses];
+
+export type GetPartnerSpvData = {
+  body?: never;
+  path: {
+    /**
+     * The SPV ID (prefixed, e.g. `ofr_abc123`)
+     */
+    id: string;
+  };
+  query?: never;
+  url: "/partner/spvs/{id}";
+};
+
+export type GetPartnerSpvErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+};
+
+export type GetPartnerSpvError = GetPartnerSpvErrors[keyof GetPartnerSpvErrors];
+
+export type GetPartnerSpvResponses = {
+  /**
+   * Successful response
+   */
+  200: SpvEnvelope;
+};
+
+export type GetPartnerSpvResponse =
+  GetPartnerSpvResponses[keyof GetPartnerSpvResponses];
+
+export type OpenPartnerSpvData = {
+  body?: never;
+  path: {
+    /**
+     * The SPV ID (prefixed, e.g. `ofr_abc123`)
+     */
+    id: string;
+  };
+  query?: never;
+  url: "/partner/spvs/{id}/open";
+};
+
+export type OpenPartnerSpvErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+  /**
+   * The request conflicts with the resource's current state (for example, opening an
+   * SPV that is already open, or closing one that is not yet open).
+   *
+   */
+  409: Error;
+};
+
+export type OpenPartnerSpvError =
+  OpenPartnerSpvErrors[keyof OpenPartnerSpvErrors];
+
+export type OpenPartnerSpvResponses = {
+  /**
+   * SPV opened
+   */
+  200: SpvEnvelope;
+};
+
+export type OpenPartnerSpvResponse =
+  OpenPartnerSpvResponses[keyof OpenPartnerSpvResponses];
+
+export type ClosePartnerSpvData = {
+  body?: never;
+  path: {
+    /**
+     * The SPV ID (prefixed, e.g. `ofr_abc123`)
+     */
+    id: string;
+  };
+  query?: never;
+  url: "/partner/spvs/{id}/close";
+};
+
+export type ClosePartnerSpvErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+  /**
+   * The request conflicts with the resource's current state (for example, opening an
+   * SPV that is already open, or closing one that is not yet open).
+   *
+   */
+  409: Error;
+  /**
+   * The SPV cannot be closed (e.g. no investments to disburse). `error.details.blockers` lists the specific reasons.
+   */
+  422: Error;
+};
+
+export type ClosePartnerSpvError =
+  ClosePartnerSpvErrors[keyof ClosePartnerSpvErrors];
+
+export type ClosePartnerSpvResponses = {
+  /**
+   * Close intent proposed
+   */
+  200: SpvCloseIntentEnvelope;
+};
+
+export type ClosePartnerSpvResponse =
+  ClosePartnerSpvResponses[keyof ClosePartnerSpvResponses];
+
+export type GetPartnerSpvStatusData = {
+  body?: never;
+  path: {
+    /**
+     * The SPV ID (prefixed, e.g. `ofr_abc123`)
+     */
+    id: string;
+  };
+  query?: never;
+  url: "/partner/spvs/{id}/status";
+};
+
+export type GetPartnerSpvStatusErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+};
+
+export type GetPartnerSpvStatusError =
+  GetPartnerSpvStatusErrors[keyof GetPartnerSpvStatusErrors];
+
+export type GetPartnerSpvStatusResponses = {
+  /**
+   * Successful response
+   */
+  200: SpvStatusEnvelope;
+};
+
+export type GetPartnerSpvStatusResponse =
+  GetPartnerSpvStatusResponses[keyof GetPartnerSpvStatusResponses];
+
+export type CancelPartnerSpvData = {
+  body?: {
+    /**
+     * Optional human-readable cancellation reason (recorded on the intent).
+     */
+    reason?: string;
+  };
+  path: {
+    /**
+     * The SPV ID (prefixed, e.g. `ofr_abc123`)
+     */
+    id: string;
+  };
+  query?: never;
+  url: "/partner/spvs/{id}/cancel";
+};
+
+export type CancelPartnerSpvErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+  /**
+   * The request conflicts with the resource's current state (for example, opening an
+   * SPV that is already open, or closing one that is not yet open).
+   *
+   */
+  409: Error;
+  /**
+   * Cannot be canceled (wrong state or already disbursed)
+   */
+  422: Error;
+};
+
+export type CancelPartnerSpvError =
+  CancelPartnerSpvErrors[keyof CancelPartnerSpvErrors];
+
+export type CancelPartnerSpvResponses = {
+  /**
+   * Cancel intent proposed
+   */
+  200: SpvCancelIntentEnvelope;
+};
+
+export type CancelPartnerSpvResponse =
+  CancelPartnerSpvResponses[keyof CancelPartnerSpvResponses];
+
+export type ListPartnerSpvInviteLinksData = {
+  body?: never;
+  path: {
+    /**
+     * The SPV ID (prefixed, e.g. `ofr_abc123`)
+     */
+    id: string;
+  };
+  query?: {
+    /**
+     * Page size (default 25, max 100)
+     */
+    per_page?: number;
+    /**
+     * Cursor-based pagination token. Use the `next_cursor` value from the previous response's
+     * `meta` object to retrieve the next page of results. Omit this parameter to retrieve the
+     * first page.
+     *
+     */
+    cursor?: number;
+  };
+  url: "/partner/spvs/{id}/invite_links";
+};
+
+export type ListPartnerSpvInviteLinksErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+};
+
+export type ListPartnerSpvInviteLinksError =
+  ListPartnerSpvInviteLinksErrors[keyof ListPartnerSpvInviteLinksErrors];
+
+export type ListPartnerSpvInviteLinksResponses = {
+  /**
+   * Successful response
+   */
+  200: InviteLinkListEnvelope;
+};
+
+export type ListPartnerSpvInviteLinksResponse =
+  ListPartnerSpvInviteLinksResponses[keyof ListPartnerSpvInviteLinksResponses];
+
+export type CreatePartnerSpvInviteLinkData = {
+  body?: {
+    invite_link?: InviteLinkCreateInput;
+  };
+  headers?: {
+    /**
+     * A unique client-generated key that makes a write request safe to retry. If a request
+     * is retried within 24 hours with the same key and body, the original result is returned
+     * instead of performing the operation again. Strongly recommended on all `POST` requests
+     * that create resources.
+     *
+     */
+    "Idempotency-Key"?: string;
+  };
+  path: {
+    /**
+     * The SPV ID (prefixed, e.g. `ofr_abc123`)
+     */
+    id: string;
+  };
+  query?: never;
+  url: "/partner/spvs/{id}/invite_links";
+};
+
+export type CreatePartnerSpvInviteLinkErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+  /**
+   * One or more request fields failed validation.
+   */
+  422: ValidationError;
+};
+
+export type CreatePartnerSpvInviteLinkError =
+  CreatePartnerSpvInviteLinkErrors[keyof CreatePartnerSpvInviteLinkErrors];
+
+export type CreatePartnerSpvInviteLinkResponses = {
+  /**
+   * Idempotent replay of a prior create with the same `Idempotency-Key`
+   */
+  200: InviteLinkEnvelope;
+  /**
+   * Invite link created
+   */
+  201: InviteLinkEnvelope;
+};
+
+export type CreatePartnerSpvInviteLinkResponse =
+  CreatePartnerSpvInviteLinkResponses[keyof CreatePartnerSpvInviteLinkResponses];
+
+export type CancelPartnerSpvInviteLinkData = {
+  body?: never;
+  path: {
+    /**
+     * The SPV ID (prefixed, e.g. `ofr_abc123`)
+     */
+    id: string;
+    /**
+     * The invite link ID (prefixed, e.g. `il_abc123`)
+     */
+    invite_link_id: string;
+  };
+  query?: never;
+  url: "/partner/spvs/{id}/invite_links/{invite_link_id}";
+};
+
+export type CancelPartnerSpvInviteLinkErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+};
+
+export type CancelPartnerSpvInviteLinkError =
+  CancelPartnerSpvInviteLinkErrors[keyof CancelPartnerSpvInviteLinkErrors];
+
+export type CancelPartnerSpvInviteLinkResponses = {
+  /**
+   * Invite link canceled
+   */
+  200: InviteLinkEnvelope;
+};
+
+export type CancelPartnerSpvInviteLinkResponse =
+  CancelPartnerSpvInviteLinkResponses[keyof CancelPartnerSpvInviteLinkResponses];
+
+export type GetPartnerSpvInviteLinkData = {
+  body?: never;
+  path: {
+    /**
+     * The SPV ID (prefixed, e.g. `ofr_abc123`)
+     */
+    id: string;
+    /**
+     * The invite link ID (prefixed, e.g. `il_abc123`)
+     */
+    invite_link_id: string;
+  };
+  query?: never;
+  url: "/partner/spvs/{id}/invite_links/{invite_link_id}";
+};
+
+export type GetPartnerSpvInviteLinkErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+};
+
+export type GetPartnerSpvInviteLinkError =
+  GetPartnerSpvInviteLinkErrors[keyof GetPartnerSpvInviteLinkErrors];
+
+export type GetPartnerSpvInviteLinkResponses = {
+  /**
+   * Successful response
+   */
+  200: InviteLinkEnvelope;
+};
+
+export type GetPartnerSpvInviteLinkResponse =
+  GetPartnerSpvInviteLinkResponses[keyof GetPartnerSpvInviteLinkResponses];
+
+export type UpdatePartnerSpvInviteLinkData = {
+  body: {
+    invite_link?: InviteLinkUpdateInput;
+  };
+  path: {
+    /**
+     * The SPV ID (prefixed, e.g. `ofr_abc123`)
+     */
+    id: string;
+    /**
+     * The invite link ID (prefixed, e.g. `il_abc123`)
+     */
+    invite_link_id: string;
+  };
+  query?: never;
+  url: "/partner/spvs/{id}/invite_links/{invite_link_id}";
+};
+
+export type UpdatePartnerSpvInviteLinkErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+  /**
+   * One or more request fields failed validation.
+   */
+  422: ValidationError;
+};
+
+export type UpdatePartnerSpvInviteLinkError =
+  UpdatePartnerSpvInviteLinkErrors[keyof UpdatePartnerSpvInviteLinkErrors];
+
+export type UpdatePartnerSpvInviteLinkResponses = {
+  /**
+   * Invite link updated
+   */
+  200: InviteLinkEnvelope;
+};
+
+export type UpdatePartnerSpvInviteLinkResponse =
+  UpdatePartnerSpvInviteLinkResponses[keyof UpdatePartnerSpvInviteLinkResponses];
+
+export type ResendPartnerSpvInviteLinkData = {
+  body?: never;
+  path: {
+    /**
+     * The SPV ID (prefixed, e.g. `ofr_abc123`)
+     */
+    id: string;
+    /**
+     * The invite link ID (prefixed, e.g. `il_abc123`)
+     */
+    invite_link_id: string;
+  };
+  query?: never;
+  url: "/partner/spvs/{id}/invite_links/{invite_link_id}/resend";
+};
+
+export type ResendPartnerSpvInviteLinkErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+  /**
+   * One or more request fields failed validation.
+   */
+  422: ValidationError;
+};
+
+export type ResendPartnerSpvInviteLinkError =
+  ResendPartnerSpvInviteLinkErrors[keyof ResendPartnerSpvInviteLinkErrors];
+
+export type ResendPartnerSpvInviteLinkResponses = {
+  /**
+   * Invite resent
+   */
+  200: InviteLinkEnvelope;
+};
+
+export type ResendPartnerSpvInviteLinkResponse =
+  ResendPartnerSpvInviteLinkResponses[keyof ResendPartnerSpvInviteLinkResponses];
+
+export type BulkCreatePartnerSpvInviteLinksData = {
+  body: BulkInviteLinkCreateInput;
+  path: {
+    /**
+     * The SPV ID (prefixed, e.g. `ofr_abc123`)
+     */
+    id: string;
+  };
+  query?: never;
+  url: "/partner/spvs/{id}/invite_links/bulk";
+};
+
+export type BulkCreatePartnerSpvInviteLinksErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+  /**
+   * One or more request fields failed validation.
+   */
+  422: ValidationError;
+};
+
+export type BulkCreatePartnerSpvInviteLinksError =
+  BulkCreatePartnerSpvInviteLinksErrors[keyof BulkCreatePartnerSpvInviteLinksErrors];
+
+export type BulkCreatePartnerSpvInviteLinksResponses = {
+  /**
+   * Per-item results (created links and/or item errors)
+   */
+  207: BulkInviteLinkEnvelope;
+};
+
+export type BulkCreatePartnerSpvInviteLinksResponse =
+  BulkCreatePartnerSpvInviteLinksResponses[keyof BulkCreatePartnerSpvInviteLinksResponses];
+
+export type ListPartnerInvestmentSessionsData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Only sessions on this SPV
+     */
+    spv_id?: string;
+    /**
+     * Only sessions in this state
+     */
+    status?:
+      | "pending"
+      | "in_progress"
+      | "completed"
+      | "abandoned"
+      | "expired"
+      | "canceled";
+    /**
+     * Page size (default 25, max 100)
+     */
+    per_page?: number;
+    /**
+     * Cursor-based pagination token. Use the `next_cursor` value from the previous response's
+     * `meta` object to retrieve the next page of results. Omit this parameter to retrieve the
+     * first page.
+     *
+     */
+    cursor?: number;
+  };
+  url: "/partner/investment_sessions";
+};
+
+export type ListPartnerInvestmentSessionsErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * One or more request fields failed validation.
+   */
+  422: ValidationError;
+};
+
+export type ListPartnerInvestmentSessionsError =
+  ListPartnerInvestmentSessionsErrors[keyof ListPartnerInvestmentSessionsErrors];
+
+export type ListPartnerInvestmentSessionsResponses = {
+  /**
+   * Successful response
+   */
+  200: InvestmentSessionListEnvelope;
+};
+
+export type ListPartnerInvestmentSessionsResponse =
+  ListPartnerInvestmentSessionsResponses[keyof ListPartnerInvestmentSessionsResponses];
+
+export type CreatePartnerInvestmentSessionData = {
+  body: {
+    investment_session: InvestmentSessionCreateInput;
+  };
+  headers?: {
+    /**
+     * A unique client-generated key that makes a write request safe to retry. If a request
+     * is retried within 24 hours with the same key and body, the original result is returned
+     * instead of performing the operation again. Strongly recommended on all `POST` requests
+     * that create resources.
+     *
+     */
+    "Idempotency-Key"?: string;
+  };
+  path?: never;
+  query?: never;
+  url: "/partner/investment_sessions";
+};
+
+export type CreatePartnerInvestmentSessionErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+  /**
+   * One or more request fields failed validation.
+   */
+  422: ValidationError;
+};
+
+export type CreatePartnerInvestmentSessionError =
+  CreatePartnerInvestmentSessionErrors[keyof CreatePartnerInvestmentSessionErrors];
+
+export type CreatePartnerInvestmentSessionResponses = {
+  /**
+   * Idempotent replay — the session already created for this Idempotency-Key is returned.
+   */
+  200: InvestmentSessionEnvelope;
+  /**
+   * Investment session created
+   */
+  201: InvestmentSessionEnvelope;
+};
+
+export type CreatePartnerInvestmentSessionResponse =
+  CreatePartnerInvestmentSessionResponses[keyof CreatePartnerInvestmentSessionResponses];
+
+export type CancelPartnerInvestmentSessionData = {
+  body?: never;
+  path: {
+    /**
+     * The investment session ID (prefixed, e.g. `is_abc123`)
+     */
+    id: string;
+  };
+  query?: never;
+  url: "/partner/investment_sessions/{id}";
+};
+
+export type CancelPartnerInvestmentSessionErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+  /**
+   * One or more request fields failed validation.
+   */
+  422: ValidationError;
+};
+
+export type CancelPartnerInvestmentSessionError =
+  CancelPartnerInvestmentSessionErrors[keyof CancelPartnerInvestmentSessionErrors];
+
+export type CancelPartnerInvestmentSessionResponses = {
+  /**
+   * Session canceled (state `canceled` in the response)
+   */
+  200: InvestmentSessionEnvelope;
+};
+
+export type CancelPartnerInvestmentSessionResponse =
+  CancelPartnerInvestmentSessionResponses[keyof CancelPartnerInvestmentSessionResponses];
+
+export type GetPartnerInvestmentSessionData = {
+  body?: never;
+  path: {
+    /**
+     * The investment session ID (prefixed, e.g. `is_abc123`)
+     */
+    id: string;
+  };
+  query?: never;
+  url: "/partner/investment_sessions/{id}";
+};
+
+export type GetPartnerInvestmentSessionErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+};
+
+export type GetPartnerInvestmentSessionError =
+  GetPartnerInvestmentSessionErrors[keyof GetPartnerInvestmentSessionErrors];
+
+export type GetPartnerInvestmentSessionResponses = {
+  /**
+   * Successful response
+   */
+  200: InvestmentSessionEnvelope;
+};
+
+export type GetPartnerInvestmentSessionResponse =
+  GetPartnerInvestmentSessionResponses[keyof GetPartnerInvestmentSessionResponses];
+
+export type ListPartnerSpvInvestmentsData = {
+  body?: never;
+  path: {
+    /**
+     * The SPV ID (prefixed, e.g. `ofr_abc123`)
+     */
+    id: string;
+  };
+  query?: {
+    /**
+     * Page size (default 25, max 100)
+     */
+    per_page?: number;
+    /**
+     * Cursor-based pagination token. Use the `next_cursor` value from the previous response's
+     * `meta` object to retrieve the next page of results. Omit this parameter to retrieve the
+     * first page.
+     *
+     */
+    cursor?: number;
+  };
+  url: "/partner/spvs/{id}/investments";
+};
+
+export type ListPartnerSpvInvestmentsErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+};
+
+export type ListPartnerSpvInvestmentsError =
+  ListPartnerSpvInvestmentsErrors[keyof ListPartnerSpvInvestmentsErrors];
+
+export type ListPartnerSpvInvestmentsResponses = {
+  /**
+   * Successful response
+   */
+  200: PartnerInvestmentListEnvelope;
+};
+
+export type ListPartnerSpvInvestmentsResponse =
+  ListPartnerSpvInvestmentsResponses[keyof ListPartnerSpvInvestmentsResponses];
+
+export type ListPartnerSpvInvestorsData = {
+  body?: never;
+  path: {
+    /**
+     * The SPV ID (prefixed, e.g. `ofr_abc123`)
+     */
+    id: string;
+  };
+  query?: {
+    /**
+     * Page size (default 25, max 100)
+     */
+    per_page?: number;
+    /**
+     * Cursor-based pagination token. Use the `next_cursor` value from the previous response's
+     * `meta` object to retrieve the next page of results. Omit this parameter to retrieve the
+     * first page.
+     *
+     */
+    cursor?: number;
+  };
+  url: "/partner/spvs/{id}/investors";
+};
+
+export type ListPartnerSpvInvestorsErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+};
+
+export type ListPartnerSpvInvestorsError =
+  ListPartnerSpvInvestorsErrors[keyof ListPartnerSpvInvestorsErrors];
+
+export type ListPartnerSpvInvestorsResponses = {
+  /**
+   * Successful response
+   */
+  200: PartnerInvestorListEnvelope;
+};
+
+export type ListPartnerSpvInvestorsResponse =
+  ListPartnerSpvInvestorsResponses[keyof ListPartnerSpvInvestorsResponses];
