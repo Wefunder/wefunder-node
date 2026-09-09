@@ -26,6 +26,24 @@ import type {
   ListIntentsData,
   GetPortfolioData,
   ListPortfolioPositionsData,
+  // --- partner SPV surface ---
+  Spv,
+  SpvStatus,
+  SpvCreateInput,
+  SpvCloseIntentEnvelope,
+  SpvCancelIntentEnvelope,
+  InviteLink,
+  InviteLinkCreateInput,
+  InviteLinkUpdateInput,
+  BulkInviteLinkCreateInput,
+  BulkInviteLinkEnvelope,
+  InvestmentSession,
+  InvestmentSessionCreateInput,
+  PartnerInvestment,
+  PartnerInvestor,
+  IntentReview,
+  ListPartnerSpvsData,
+  ListPartnerInvestmentSessionsData,
 } from "./generated/types.gen.js";
 
 /** Documented `sort` values for the offerings list, from the generated op. */
@@ -42,6 +60,31 @@ export type PortfolioPositionsQuery = NonNullable<ListPortfolioPositionsData["qu
 export type PortfolioPositionsFilters = Omit<PortfolioPositionsQuery, "cursor">;
 /** The summary resource inside the API's data envelope. */
 export type PortfolioSummary = NonNullable<PortfolioSummaryEnvelope["data"]>;
+
+/** Cursor + `per_page` shared by the partner list endpoints (spvs, invite links, investments, investors). */
+export type PartnerPageQuery = NonNullable<ListPartnerSpvsData["query"]>;
+/** Partner list filters, excluding the cursor managed by auto-pagination. */
+export type PartnerPageFilters = Omit<PartnerPageQuery, "cursor">;
+/** Filters + pagination for the investment-sessions list (adds `spv_id` / `status`). */
+export type PartnerSessionListQuery = NonNullable<ListPartnerInvestmentSessionsData["query"]>;
+/** Investment-sessions list filters, excluding the auto-managed cursor. */
+export type PartnerSessionListFilters = Omit<PartnerSessionListQuery, "cursor">;
+/** Documented `status` filter values for the investment-sessions list. */
+export type PartnerSessionStatus = NonNullable<PartnerSessionListQuery["status"]>;
+/**
+ * Result of `close`/`cancel`: the SPV plus the server-minted approval intent
+ * (its `review_url` is the advisor link). `intent` is absent only if the server
+ * omitted it.
+ */
+export interface SpvIntentResult {
+  spv: Spv;
+  intent?: IntentReview;
+}
+
+/** Builds the optional `Idempotency-Key` header for creating partner resources. */
+function idempotencyHeaders(opts?: { idempotencyKey?: string }): { "Idempotency-Key": string } | undefined {
+  return opts?.idempotencyKey ? { "Idempotency-Key": opts.idempotencyKey } : undefined;
+}
 
 // Version-free base — the edge gateway serves the API at the host root; `/api/v2`
 // remains a working back-compat alias. The API version is pinned via the
@@ -252,6 +295,15 @@ export class Wefunder {
       this.#unwrap(fn({ client: this.#client, query }) as Result<Page<T>>);
   }
 
+  // Like #page, but for list endpoints nested under a resource id (e.g. an SPV's
+  // invite links / investments / investors). Threads the id into the path.
+  #idPage<T, Q extends { cursor?: Cursor } = { cursor?: Cursor }>(
+    fn: (o: { client: Client; path: { id: string }; query?: Q }) => Result<Page<T>>,
+  ) {
+    return (id: string, query?: Q): Promise<Page<T>> =>
+      this.#unwrap(fn({ client: this.#client, path: { id }, query }) as Result<Page<T>>);
+  }
+
   // ---- resource namespaces (common GA paths) ----
 
   users = {
@@ -321,5 +373,150 @@ export class Wefunder {
 
   attribution = {
     me: () => this.#unwrapData<AttributionMe>(ops.getAttributionMe({ client: this.#client })),
+  };
+
+  // ---- partner SPV surface (preview) ----
+  // Spawn an SPV, invite investors, host their flow, drive the close. IDs are
+  // prefixed strings: SPVs `ofr_`, invite links `il_`, sessions `is_`, investments `inv_`.
+  partner = {
+    spvs: {
+      list: this.#page<Spv, PartnerPageQuery>(ops.listPartnerSpvs as never),
+      all: (query?: PartnerPageFilters): AsyncGenerator<Spv> =>
+        paginate((cursor) => this.partner.spvs.list({ ...query, cursor: cursor as number })),
+      collect: (query?: PartnerPageFilters): Promise<Spv[]> =>
+        collect((cursor) => this.partner.spvs.list({ ...query, cursor: cursor as number })),
+      get: (id: string) =>
+        this.#unwrapData<Spv>(ops.getPartnerSpv({ client: this.#client, path: { id } })),
+      create: (spv: SpvCreateInput, opts?: { idempotencyKey?: string }) =>
+        this.#unwrapData<Spv>(
+          ops.createPartnerSpv({ client: this.#client, body: { spv }, headers: idempotencyHeaders(opts) }),
+        ),
+      open: (id: string) =>
+        this.#unwrapData<Spv>(ops.openPartnerSpv({ client: this.#client, path: { id } })),
+      // close/cancel mint an approval intent in meta; return the SPV + that intent.
+      close: (id: string): Promise<SpvIntentResult> =>
+        this.#unwrap<SpvCloseIntentEnvelope>(
+          ops.closePartnerSpv({ client: this.#client, path: { id } }),
+        ).then((env) => ({ spv: env.data as Spv, intent: env.meta?.disburse_intent })),
+      cancel: (id: string, opts?: { reason?: string }): Promise<SpvIntentResult> =>
+        this.#unwrap<SpvCancelIntentEnvelope>(
+          ops.cancelPartnerSpv({
+            client: this.#client,
+            path: { id },
+            body: opts?.reason ? { reason: opts.reason } : undefined,
+          }),
+        ).then((env) => ({ spv: env.data as Spv, intent: env.meta?.cancel_intent })),
+      status: (id: string) =>
+        this.#unwrapData<SpvStatus>(ops.getPartnerSpvStatus({ client: this.#client, path: { id } })),
+
+      investments: {
+        list: this.#idPage<PartnerInvestment, PartnerPageQuery>(ops.listPartnerSpvInvestments as never),
+        all: (spvId: string, query?: PartnerPageFilters): AsyncGenerator<PartnerInvestment> =>
+          paginate((cursor) =>
+            this.partner.spvs.investments.list(spvId, { ...query, cursor: cursor as number }),
+          ),
+        collect: (spvId: string, query?: PartnerPageFilters): Promise<PartnerInvestment[]> =>
+          collect((cursor) =>
+            this.partner.spvs.investments.list(spvId, { ...query, cursor: cursor as number }),
+          ),
+      },
+
+      investors: {
+        list: this.#idPage<PartnerInvestor, PartnerPageQuery>(ops.listPartnerSpvInvestors as never),
+        all: (spvId: string, query?: PartnerPageFilters): AsyncGenerator<PartnerInvestor> =>
+          paginate((cursor) =>
+            this.partner.spvs.investors.list(spvId, { ...query, cursor: cursor as number }),
+          ),
+        collect: (spvId: string, query?: PartnerPageFilters): Promise<PartnerInvestor[]> =>
+          collect((cursor) =>
+            this.partner.spvs.investors.list(spvId, { ...query, cursor: cursor as number }),
+          ),
+      },
+
+      inviteLinks: {
+        list: this.#idPage<InviteLink, PartnerPageQuery>(ops.listPartnerSpvInviteLinks as never),
+        all: (spvId: string, query?: PartnerPageFilters): AsyncGenerator<InviteLink> =>
+          paginate((cursor) =>
+            this.partner.spvs.inviteLinks.list(spvId, { ...query, cursor: cursor as number }),
+          ),
+        collect: (spvId: string, query?: PartnerPageFilters): Promise<InviteLink[]> =>
+          collect((cursor) =>
+            this.partner.spvs.inviteLinks.list(spvId, { ...query, cursor: cursor as number }),
+          ),
+        get: (spvId: string, inviteLinkId: string) =>
+          this.#unwrapData<InviteLink>(
+            ops.getPartnerSpvInviteLink({
+              client: this.#client,
+              path: { id: spvId, invite_link_id: inviteLinkId },
+            }),
+          ),
+        create: (spvId: string, input?: InviteLinkCreateInput, opts?: { idempotencyKey?: string }) =>
+          this.#unwrapData<InviteLink>(
+            ops.createPartnerSpvInviteLink({
+              client: this.#client,
+              path: { id: spvId },
+              body: { invite_link: input ?? {} },
+              headers: idempotencyHeaders(opts),
+            }),
+          ),
+        update: (spvId: string, inviteLinkId: string, input: InviteLinkUpdateInput) =>
+          this.#unwrapData<InviteLink>(
+            ops.updatePartnerSpvInviteLink({
+              client: this.#client,
+              path: { id: spvId, invite_link_id: inviteLinkId },
+              body: { invite_link: input },
+            }),
+          ),
+        cancel: (spvId: string, inviteLinkId: string) =>
+          this.#unwrapData<InviteLink>(
+            ops.cancelPartnerSpvInviteLink({
+              client: this.#client,
+              path: { id: spvId, invite_link_id: inviteLinkId },
+            }),
+          ),
+        resend: (spvId: string, inviteLinkId: string) =>
+          this.#unwrapData<InviteLink>(
+            ops.resendPartnerSpvInviteLink({
+              client: this.#client,
+              path: { id: spvId, invite_link_id: inviteLinkId },
+            }),
+          ),
+        // 207 multi-status: created links in `data`, per-item failures in `errors`.
+        bulkCreate: (spvId: string, input: BulkInviteLinkCreateInput): Promise<BulkInviteLinkEnvelope> =>
+          this.#unwrap<BulkInviteLinkEnvelope>(
+            ops.bulkCreatePartnerSpvInviteLinks({ client: this.#client, path: { id: spvId }, body: input }),
+          ),
+      },
+    },
+
+    investmentSessions: {
+      list: this.#page<InvestmentSession, PartnerSessionListQuery>(
+        ops.listPartnerInvestmentSessions as never,
+      ),
+      all: (query?: PartnerSessionListFilters): AsyncGenerator<InvestmentSession> =>
+        paginate((cursor) =>
+          this.partner.investmentSessions.list({ ...query, cursor: cursor as number }),
+        ),
+      collect: (query?: PartnerSessionListFilters): Promise<InvestmentSession[]> =>
+        collect((cursor) =>
+          this.partner.investmentSessions.list({ ...query, cursor: cursor as number }),
+        ),
+      get: (id: string) =>
+        this.#unwrapData<InvestmentSession>(
+          ops.getPartnerInvestmentSession({ client: this.#client, path: { id } }),
+        ),
+      create: (investmentSession: InvestmentSessionCreateInput, opts?: { idempotencyKey?: string }) =>
+        this.#unwrapData<InvestmentSession>(
+          ops.createPartnerInvestmentSession({
+            client: this.#client,
+            body: { investment_session: investmentSession },
+            headers: idempotencyHeaders(opts),
+          }),
+        ),
+      cancel: (id: string) =>
+        this.#unwrapData<InvestmentSession>(
+          ops.cancelPartnerInvestmentSession({ client: this.#client, path: { id } }),
+        ),
+    },
   };
 }

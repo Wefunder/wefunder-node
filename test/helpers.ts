@@ -20,6 +20,8 @@ export function makeFetch(handler: Handler): { fetch: typeof fetch; calls: Recor
     );
     let body: string | undefined;
     if (typeof init?.body === "string") body = init.body;
+    // The generated client-fetch passes a Request (body baked in), not (url, init).
+    else if (input instanceof Request) body = await input.clone().text().catch(() => undefined);
     const call: RecordedCall = { url, method, headers, body };
     calls.push(call);
     return handler(call);

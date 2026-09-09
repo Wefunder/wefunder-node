@@ -2332,6 +2332,747 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /partner/spvs:
+    get:
+      tags:
+        - Partner SPVs
+      summary: List SPVs
+      description: |
+        Returns all SPVs created by the authenticated partner, newest first.
+      operationId: listPartnerSpvs
+      security:
+        - bearerAuth:
+            - read:offerings
+      parameters:
+        - name: per_page
+          in: query
+          description: Page size (default 25, max 100)
+          schema:
+            type: integer
+        - $ref: '#/components/parameters/cursor'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpvListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags:
+        - Partner SPVs
+      summary: Create an SPV
+      description: |
+        Creates a new SPV in `draft` status. Wefunder handles entity formation
+        (Delaware Series LLC), document generation, payment rails, and compliance.
+        The SPV does not accept investments until you call the open endpoint.
+
+        Pass an `Idempotency-Key` header to make creation safe to retry.
+      operationId: createPartnerSpv
+      security:
+        - bearerAuth:
+            - write:offerings
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - spv
+              properties:
+                spv:
+                  $ref: '#/components/schemas/SpvCreateInput'
+      responses:
+        '201':
+          description: SPV created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpvWithMetaEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /partner/spvs/{id}:
+    get:
+      tags:
+        - Partner SPVs
+      summary: Get an SPV
+      description: |
+        Returns full details and live metrics for a single SPV.
+      operationId: getPartnerSpv
+      security:
+        - bearerAuth:
+            - read:offerings
+      parameters:
+        - $ref: '#/components/parameters/spv_id'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpvEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /partner/spvs/{id}/open:
+    post:
+      tags:
+        - Partner SPVs
+      summary: Open an SPV
+      description: |
+        Transitions an SPV from `draft` to `open` so it can accept investments.
+        On success the SPV gains an `invest_url`.
+      operationId: openPartnerSpv
+      security:
+        - bearerAuth:
+            - write:offerings
+      parameters:
+        - $ref: '#/components/parameters/spv_id'
+      responses:
+        '200':
+          description: SPV opened
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpvEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /partner/spvs/{id}/close:
+    post:
+      tags:
+        - Partner SPVs
+      summary: Close an SPV
+      description: |
+        Transitions an `open` SPV to `closing` and creates a disburse intent that a
+        Wefunder advisor must approve to finalize the close. No new investments are
+        accepted. The response returns the SPV and a `disburse_intent` in `meta` whose
+        `review_url` is the approval link; a repeated call returns the same pending intent.
+        Returns `422 close_blocked` if the SPV has no investments to disburse. Track
+        progress with the status endpoint.
+      operationId: closePartnerSpv
+      security:
+        - bearerAuth:
+            - write:offerings
+      parameters:
+        - $ref: '#/components/parameters/spv_id'
+      responses:
+        '200':
+          description: Close intent proposed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpvCloseIntentEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          description: The SPV cannot be closed (e.g. no investments to disburse). `error.details.blockers` lists the specific reasons.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /partner/spvs/{id}/status:
+    get:
+      tags:
+        - Partner SPVs
+      summary: Get SPV status
+      description: |
+        Returns the SPV's lifecycle status plus orthogonal progress flags — the
+        answer to "where is this SPV and what is it waiting on".
+      operationId: getPartnerSpvStatus
+      security:
+        - bearerAuth:
+            - read:offerings
+      parameters:
+        - $ref: '#/components/parameters/spv_id'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpvStatusEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /partner/spvs/{id}/cancel:
+    post:
+      tags:
+        - Partner SPVs
+      summary: Cancel an SPV
+      description: |
+        Cancels an SPV that is in `draft` or `open` (an SPV in `closing` cannot be
+        canceled, and one whose funds have been disbursed returns `already_disbursed`).
+        Because cancellation aborts the raise and refunds investors — a dangerous,
+        irreversible operation — it creates a **cancel intent** that a Wefunder advisor
+        must approve; the abort and refunds run when the intent is approved, not
+        immediately. The response returns the SPV and a `cancel_intent` in `meta` whose
+        `review_url` is the approval link. Repeated calls return the same pending intent.
+        Emits the `spv.canceled` webhook when the intent executes.
+      operationId: cancelPartnerSpv
+      security:
+        - bearerAuth:
+            - write:offerings
+      parameters:
+        - $ref: '#/components/parameters/spv_id'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: Optional human-readable cancellation reason (recorded on the intent).
+                  example: Deal fell through
+      responses:
+        '200':
+          description: Cancel intent proposed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpvCancelIntentEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          description: Cannot be canceled (wrong state or already disbursed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /partner/spvs/{id}/invite_links:
+    get:
+      tags:
+        - Partner Invites & Sessions
+      summary: List invite links
+      description: |
+        Returns all invite links for an SPV — both **reusable** (shareable, no
+        recipient) and **per-person** (addressed to one email or Wefunder user),
+        newest first. Per-person rows additionally carry a derived `status` and
+        engagement timestamps.
+      operationId: listPartnerSpvInviteLinks
+      security:
+        - bearerAuth:
+            - read:invite_links
+      parameters:
+        - $ref: '#/components/parameters/spv_id'
+        - name: per_page
+          in: query
+          description: Page size (default 25, max 100)
+          schema:
+            type: integer
+        - $ref: '#/components/parameters/cursor'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InviteLinkListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags:
+        - Partner Invites & Sessions
+      summary: Create an invite link
+      description: |
+        Creates an invite link for an SPV. One endpoint, two shapes — the request
+        body's recipient fields decide which:
+
+        - **No recipient** → a **reusable** link (`reuse: true`): a shareable URL
+          anyone can use, with optional `allocation_cents` budget and `max_uses`
+          claim caps (analogous to a Stripe Payment Link).
+        - **`email` or `wefunder_user_id`** → a **per-person** invite
+          (`reuse: false`): pre-addressed to one recipient, optionally emailed, with
+          a live-derived `status`.
+
+        Validation: `email` and `wefunder_user_id` are mutually exclusive; an
+        unresolvable `wefunder_user_id` is a 404; `max_uses` is rejected for
+        per-person invites; recipient detail fields (`first_name`/`last_name`/
+        `message`) and `send_email` require a recipient. The create is idempotent
+        via `Idempotency-Key` (a replay returns 200 with the original link).
+      operationId: createPartnerSpvInviteLink
+      security:
+        - bearerAuth:
+            - write:invite_links
+      parameters:
+        - $ref: '#/components/parameters/spv_id'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                invite_link:
+                  $ref: '#/components/schemas/InviteLinkCreateInput'
+      responses:
+        '200':
+          description: Idempotent replay of a prior create with the same `Idempotency-Key`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InviteLinkEnvelope'
+        '201':
+          description: Invite link created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InviteLinkEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /partner/spvs/{id}/invite_links/{invite_link_id}:
+    get:
+      tags:
+        - Partner Invites & Sessions
+      summary: Get an invite link
+      description: |
+        Returns a single invite link, including its engagement event timeline
+        (`events`). Per-person links also carry the live-derived `status`.
+      operationId: getPartnerSpvInviteLink
+      security:
+        - bearerAuth:
+            - read:invite_links
+      parameters:
+        - $ref: '#/components/parameters/spv_id'
+        - $ref: '#/components/parameters/invite_link_id'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InviteLinkEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags:
+        - Partner Invites & Sessions
+      summary: Update an invite link
+      description: |
+        Updates an invite link's terms. Only `allocation_cents` and `max_uses` are
+        mutable; recipient identity, `reuse`, and the URL token cannot change. Any
+        other fields in the body are ignored. Setting `max_uses` on a per-person
+        link, or below the current `uses_count`, is rejected (422).
+      operationId: updatePartnerSpvInviteLink
+      security:
+        - bearerAuth:
+            - write:invite_links
+      parameters:
+        - $ref: '#/components/parameters/spv_id'
+        - $ref: '#/components/parameters/invite_link_id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                invite_link:
+                  $ref: '#/components/schemas/InviteLinkUpdateInput'
+      responses:
+        '200':
+          description: Invite link updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InviteLinkEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+    delete:
+      tags:
+        - Partner Invites & Sessions
+      summary: Cancel an invite link
+      description: |
+        Soft-cancels an invite link: sets `active: false`, the URL stops working,
+        and a per-person link's `status` becomes `revoked`. Engagement history is
+        preserved — the row is never destroyed. Idempotent (canceling an
+        already-canceled link is a no-op 200).
+      operationId: cancelPartnerSpvInviteLink
+      security:
+        - bearerAuth:
+            - write:invite_links
+      parameters:
+        - $ref: '#/components/parameters/spv_id'
+        - $ref: '#/components/parameters/invite_link_id'
+      responses:
+        '200':
+          description: Invite link canceled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InviteLinkEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /partner/spvs/{id}/invite_links/{invite_link_id}/resend:
+    post:
+      tags:
+        - Partner Invites & Sessions
+      summary: Resend an invite link
+      description: |
+        Re-sends a per-person invite's email and records a `resend` event. Returns
+        the link with its updated `events` timeline. Rejected (422) for a reusable
+        link, a canceled link, or a recipient who declined or reported spam.
+      operationId: resendPartnerSpvInviteLink
+      security:
+        - bearerAuth:
+            - write:invite_links
+      parameters:
+        - $ref: '#/components/parameters/spv_id'
+        - $ref: '#/components/parameters/invite_link_id'
+      responses:
+        '200':
+          description: Invite resent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InviteLinkEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /partner/spvs/{id}/invite_links/bulk:
+    post:
+      tags:
+        - Partner Invites & Sessions
+      summary: Bulk-create per-person invite links
+      description: |
+        Creates many per-person invites in one request (up to 100). Each item must
+        be addressed by `email` or `wefunder_user_id` — a reusable link cannot be
+        created in bulk. **Partial success:** each item is created independently, so
+        one bad item never blocks the rest. The response is `207 Multi-Status` with
+        the created links in `data` and per-item failures in `errors` (each with its
+        request `index`). A batch-level problem (not an array, empty, or over 100
+        items) rejects the whole request with `422` and creates nothing.
+      operationId: bulkCreatePartnerSpvInviteLinks
+      security:
+        - bearerAuth:
+            - write:invite_links
+      parameters:
+        - $ref: '#/components/parameters/spv_id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkInviteLinkCreateInput'
+      responses:
+        '207':
+          description: Per-item results (created links and/or item errors)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkInviteLinkEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /partner/investment_sessions:
+    get:
+      tags:
+        - Partner Invites & Sessions
+      summary: List investment sessions
+      description: |
+        Lists your organization's investment sessions across all SPVs, newest first.
+        Filter by `spv_id` and/or `status`.
+      operationId: listPartnerInvestmentSessions
+      security:
+        - bearerAuth:
+            - read:investment_sessions
+      parameters:
+        - name: spv_id
+          in: query
+          description: Only sessions on this SPV
+          schema:
+            type: string
+          example: ofr_abc123
+        - name: status
+          in: query
+          description: Only sessions in this state
+          schema:
+            type: string
+            enum:
+              - pending
+              - in_progress
+              - completed
+              - abandoned
+              - expired
+              - canceled
+        - name: per_page
+          in: query
+          description: Page size (default 25, max 100)
+          schema:
+            type: integer
+        - $ref: '#/components/parameters/cursor'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvestmentSessionListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+    post:
+      tags:
+        - Partner Invites & Sessions
+      summary: Create an investment session
+      description: |
+        Creates a single-use, recipient-specific hosted investment session (analogous to
+        a Stripe Checkout Session) on the SPV named by `spv_id` in the body. The session
+        walks one investor through accreditation, document signing, and payment, and
+        produces a durable `Investment` on success. Returns a `url` the recipient opens
+        to begin. If the recipient already has an active session on the SPV, that
+        session is returned instead of creating a duplicate.
+      operationId: createPartnerInvestmentSession
+      security:
+        - bearerAuth:
+            - write:investment_sessions
+        - bearerAuth:
+            - write:offerings
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - investment_session
+              properties:
+                investment_session:
+                  $ref: '#/components/schemas/InvestmentSessionCreateInput'
+      responses:
+        '200':
+          description: Idempotent replay — the session already created for this Idempotency-Key is returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvestmentSessionEnvelope'
+        '201':
+          description: Investment session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvestmentSessionEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /partner/investment_sessions/{id}:
+    get:
+      tags:
+        - Partner Invites & Sessions
+      summary: Get an investment session
+      description: |
+        Returns the full session including an `events` timeline of durable platform
+        events recorded about it.
+      operationId: getPartnerInvestmentSession
+      security:
+        - bearerAuth:
+            - read:investment_sessions
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The investment session ID (prefixed, e.g. `is_abc123`)
+          schema:
+            type: string
+          example: is_abc123
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvestmentSessionEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+        - Partner Invites & Sessions
+      summary: Cancel an investment session
+      description: |
+        Cancels a session so its link stops working. Valid while the session is
+        `pending`, `in_progress`, or `abandoned`; repeating the call on an
+        already-canceled session returns the same 200. A `completed` or `expired`
+        session cannot be canceled (422 `session_not_cancelable`).
+      operationId: cancelPartnerInvestmentSession
+      security:
+        - bearerAuth:
+            - write:investment_sessions
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The investment session ID (prefixed, e.g. `is_abc123`)
+          schema:
+            type: string
+          example: is_abc123
+      responses:
+        '200':
+          description: Session canceled (state `canceled` in the response)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvestmentSessionEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /partner/spvs/{id}/investments:
+    get:
+      tags:
+        - Partner Investments
+      summary: List SPV investments
+      description: |
+        Returns all investments into an SPV with their status and amounts, one row per
+        investment. Investor PII (name/email) is only included when the token holds
+        `read:investors:pii`.
+      operationId: listPartnerSpvInvestments
+      security:
+        - bearerAuth:
+            - read:offerings
+      parameters:
+        - $ref: '#/components/parameters/spv_id'
+        - name: per_page
+          in: query
+          description: Page size (default 25, max 100)
+          schema:
+            type: integer
+        - $ref: '#/components/parameters/cursor'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PartnerInvestmentListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /partner/spvs/{id}/investors:
+    get:
+      tags:
+        - Partner Investments
+      summary: List SPV investors
+      description: |
+        Returns the SPV's investors, aggregated one row per investor (total invested,
+        investment count, first invested at) — the investor-centric view of the cap
+        table. Investor PII (name/email) is only included when the token holds
+        `read:investors:pii`.
+      operationId: listPartnerSpvInvestors
+      security:
+        - bearerAuth:
+            - read:offerings
+      parameters:
+        - $ref: '#/components/parameters/spv_id'
+        - name: per_page
+          in: query
+          description: Page size (default 25, max 100)
+          schema:
+            type: integer
+        - $ref: '#/components/parameters/cursor'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PartnerInvestorListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 components:
   securitySchemes:
     bearerAuth:
@@ -2449,10 +3190,10 @@ components:
       name: id
       in: path
       required: true
-      description: The SPV ID (prefixed, e.g. `spv_abc123`)
+      description: The SPV ID (prefixed, e.g. `ofr_abc123`)
       schema:
         type: string
-      example: spv_abc123
+      example: ofr_abc123
     invite_link_id:
       name: invite_link_id
       in: path
@@ -2740,6 +3481,17 @@ components:
             request_id:
               type: string
               example: req_abc123
+            fees:
+              type: object
+              description: How the SPV's fee terms were sourced. Present only when the fee-table-v2 pricing path is active.
+              properties:
+                source:
+                  type: string
+                  enum:
+                    - request
+                    - api_default
+                  description: '`request` when the caller supplied a carry or management fee; `api_default` when both fell back to the documented defaults.'
+                  example: api_default
     SyndicateDealListEnvelope:
       type: object
       properties:
@@ -2889,17 +3641,13 @@ components:
           items:
             $ref: '#/components/schemas/InvestmentSession'
         meta:
-          type: object
-          properties:
-            has_more:
-              type: boolean
-            page_count:
-              type: integer
-            request_id:
-              type: string
-            next_cursor:
-              type: integer
-              nullable: true
+          allOf:
+            - $ref: '#/components/schemas/PaginationMeta'
+            - type: object
+              properties:
+                request_id:
+                  type: string
+                  example: req_abc123
     InvestorEnvelope:
       type: object
       properties:
@@ -2932,17 +3680,13 @@ components:
           items:
             $ref: '#/components/schemas/InviteLink'
         meta:
-          type: object
-          properties:
-            has_more:
-              type: boolean
-            page_count:
-              type: integer
-            request_id:
-              type: string
-            next_cursor:
-              type: integer
-              nullable: true
+          allOf:
+            - $ref: '#/components/schemas/PaginationMeta'
+            - type: object
+              properties:
+                request_id:
+                  type: string
+                  example: req_abc123
     MarketingPartnerEnvelope:
       type: object
       properties:
@@ -2966,7 +3710,13 @@ components:
           items:
             $ref: '#/components/schemas/PartnerInvestment'
         meta:
-          $ref: '#/components/schemas/PaginationMeta'
+          allOf:
+            - $ref: '#/components/schemas/PaginationMeta'
+            - type: object
+              properties:
+                request_id:
+                  type: string
+                  example: req_abc123
     PartnerInvestorListEnvelope:
       type: object
       properties:
@@ -2975,7 +3725,13 @@ components:
           items:
             $ref: '#/components/schemas/PartnerInvestor'
         meta:
-          $ref: '#/components/schemas/PaginationMeta'
+          allOf:
+            - $ref: '#/components/schemas/PaginationMeta'
+            - type: object
+              properties:
+                request_id:
+                  type: string
+                  example: req_abc123
     PartnerInviteEnvelope:
       type: object
       properties:
@@ -3012,6 +3768,12 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/Spv'
+        meta:
+          type: object
+          properties:
+            request_id:
+              type: string
+              example: req_abc123
     SpvCloseIntentEnvelope:
       type: object
       description: The SPV plus the pending disburse_funds intent an advisor approves to finalize the close.
@@ -3021,6 +3783,9 @@ components:
         meta:
           type: object
           properties:
+            request_id:
+              type: string
+              example: req_abc123
             disburse_intent:
               $ref: '#/components/schemas/IntentReview'
     SpvCancelIntentEnvelope:
@@ -3032,6 +3797,9 @@ components:
         meta:
           type: object
           properties:
+            request_id:
+              type: string
+              example: req_abc123
             cancel_intent:
               $ref: '#/components/schemas/IntentReview'
     SpvListEnvelope:
@@ -3042,7 +3810,13 @@ components:
           items:
             $ref: '#/components/schemas/Spv'
         meta:
-          $ref: '#/components/schemas/PaginationMeta'
+          allOf:
+            - $ref: '#/components/schemas/PaginationMeta'
+            - type: object
+              properties:
+                request_id:
+                  type: string
+                  example: req_abc123
     SyndicateDealDetailEnvelope:
       type: object
       properties:
@@ -3386,12 +4160,13 @@ components:
     PaginationMeta:
       type: object
       properties:
-        count:
-          type: integer
-          example: 25
         has_more:
           type: boolean
           example: true
+        page_count:
+          type: integer
+          description: Number of records returned in this page.
+          example: 25
         next_cursor:
           type: integer
           nullable: true
@@ -4886,6 +5661,16 @@ components:
           type: integer
           nullable: true
           example: 200000000
+        carried_interest_percent:
+          type: string
+          nullable: true
+          description: Carried-interest rate as a decimal percent string (e.g. "10.0"). Null when unset. On create, may be supplied as a number or string; the response always renders a string.
+          example: '10.0'
+        management_fee_percent:
+          type: string
+          nullable: true
+          description: Management-fee rate as a decimal percent string (e.g. "2.0"). Null when unset. On create, may be supplied as a number or string; the response always renders a string.
+          example: '2.0'
     SpvSettings:
       type: object
       properties:
@@ -4927,9 +5712,9 @@ components:
           example: DE
     SpvCreateInput:
       type: object
+      description: Exactly one of `target_company` (create a new target company) or `target_company_id` (reference an existing one) must be supplied.
       required:
         - name
-        - target_company
         - terms
       properties:
         name:
@@ -4937,6 +5722,10 @@ components:
           example: Acme Series A SPV
         target_company:
           $ref: '#/components/schemas/TargetCompanyInput'
+        target_company_id:
+          type: string
+          description: External id (`co_…`) of an existing company to use as the target. Mutually exclusive with `target_company`.
+          example: co_xyz789
         terms:
           $ref: '#/components/schemas/SpvTerms'
         settings:
@@ -4948,6 +5737,24 @@ components:
           example:
             partner_reference: acme-series-a-2025
             internal_notes: Introduced via Demo Day
+        deal_partners:
+          type: array
+          description: Optional carry-split partners. Each generates a draft carry agreement; the fund-manager signature and partner emails are a separate step.
+          items:
+            type: object
+            required:
+              - name
+            properties:
+              name:
+                type: string
+                example: Jane Partner
+              email:
+                type: string
+                example: jane@partner.com
+              carry_percentage:
+                type: number
+                description: Share of the carry pool allocated to this partner.
+                example: 25
     SpvMetrics:
       type: object
       properties:
@@ -4962,12 +5769,6 @@ components:
           type: integer
           description: The documented per-SPV investor soft cap (247). Advisory only — it is not enforced, and `investor_count` may exceed it.
           example: 247
-        confirmed_count:
-          type: integer
-          example: 8
-        pending_count:
-          type: integer
-          example: 4
         average_investment_cents:
           type: integer
           example: 416666
@@ -4976,7 +5777,7 @@ components:
       properties:
         id:
           type: string
-          example: spv_abc123
+          example: ofr_abc123
         type:
           type: string
           example: spv
@@ -4994,7 +5795,6 @@ components:
                 - closing
                 - closed
                 - canceled
-                - dissolved
               example: open
             series_name:
               type: string
@@ -5002,7 +5802,7 @@ components:
             invest_url:
               type: string
               nullable: true
-              example: https://wefunder.com/invest/spv_abc123
+              example: https://wefunder.com/invest/ofr_abc123
             target_company:
               type: object
               properties:
@@ -5023,18 +5823,6 @@ components:
               type: string
               format: date-time
               example: '2025-01-15T10:00:00Z'
-            opened_at:
-              type: string
-              format: date-time
-              nullable: true
-            closing_at:
-              type: string
-              format: date-time
-              nullable: true
-            closed_at:
-              type: string
-              format: date-time
-              nullable: true
     PartnerInvestor:
       type: object
       description: |
@@ -5325,8 +6113,8 @@ components:
         spv_id:
           type: string
           nullable: true
-          description: The SPV to invest into (prefixed, e.g. `spv_abc123`).
-          example: spv_abc123
+          description: The SPV to invest into (prefixed, e.g. `ofr_abc123`).
+          example: ofr_abc123
         email:
           type: string
           nullable: true
@@ -5395,7 +6183,7 @@ components:
               example: https://wefunder.com/invest/session/is_abc123
             spv_id:
               type: string
-              example: spv_abc123
+              example: ofr_abc123
             email:
               type: string
               nullable: true
@@ -5410,7 +6198,6 @@ components:
               enum:
                 - pending
                 - passed
-                - failed
               nullable: true
               example: pending
             funding_status:
@@ -5418,15 +6205,13 @@ components:
               enum:
                 - pending
                 - succeeded
-                - card_declined
-                - insufficient_funds
               nullable: true
               example: pending
             investment_id:
               type: string
               nullable: true
               description: Populated once the session completes successfully.
-              example: invt_def789
+              example: inv_def789
             metadata:
               type: object
               description: The key/value pairs supplied at creation.
@@ -5455,10 +6240,13 @@ components:
                     format: date-time
     PartnerInvestment:
       type: object
+      description: |
+        An investment in an SPV, one row per investment. `investor.full_name` and
+        `investor.email` are null unless the token holds `read:investors:pii`.
       properties:
         id:
           type: string
-          example: invt_abc123
+          example: inv_abc123
         type:
           type: string
           example: investment
@@ -5472,52 +6260,29 @@ components:
               type: string
               enum:
                 - pending
-                - awaiting_payment
-                - pending_accreditation
                 - confirmed
-                - canceled
+              description: '`confirmed` once the investment is soft-confirmed; otherwise `pending`.'
               example: confirmed
-            spv_id:
-              type: string
-              example: spv_abc123
-            investor_id:
-              type: string
-              nullable: true
-              example: investor_usr456
-            accreditation:
-              type: object
-              nullable: true
-              properties:
-                type:
-                  type: string
-                  enum:
-                    - self_attestation
-                    - verified
-                  example: verified
-                status:
-                  type: string
-                  enum:
-                    - pending
-                    - passed
-                    - failed
-                    - expired
-                  example: pending
-                basis:
-                  type: string
-                  nullable: true
-                  example: income
-                submitted_at:
-                  type: string
-                  format: date-time
-                  nullable: true
-            confirmed_at:
+            invested_at:
               type: string
               format: date-time
               nullable: true
-            created_at:
-              type: string
-              format: date-time
+              description: When the investment was applied (falls back to created_at).
               example: '2025-01-15T10:00:00Z'
+            investor:
+              type: object
+              properties:
+                id:
+                  type: string
+                  example: usr_abc123
+                full_name:
+                  type: string
+                  nullable: true
+                  example: Jane Investor
+                email:
+                  type: string
+                  nullable: true
+                  example: jane@example.com
     Investor:
       type: object
       description: |

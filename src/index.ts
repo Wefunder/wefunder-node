@@ -14,6 +14,12 @@ export {
   type PortfolioPositionsQuery,
   type PortfolioPositionsFilters,
   type PortfolioSummary,
+  type PartnerPageQuery,
+  type PartnerPageFilters,
+  type PartnerSessionListQuery,
+  type PartnerSessionListFilters,
+  type PartnerSessionStatus,
+  type SpvIntentResult,
 } from "./client.js";
 
 export { WefunderError, WefunderAuthError, REQUEST_ID_HEADER } from "./errors.js";

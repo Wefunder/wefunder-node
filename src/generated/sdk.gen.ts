@@ -12,15 +12,39 @@ import type {
   ApproveSyndicateMemberData,
   ApproveSyndicateMemberErrors,
   ApproveSyndicateMemberResponses,
+  BulkCreatePartnerSpvInviteLinksData,
+  BulkCreatePartnerSpvInviteLinksErrors,
+  BulkCreatePartnerSpvInviteLinksResponses,
+  CancelPartnerInvestmentSessionData,
+  CancelPartnerInvestmentSessionErrors,
+  CancelPartnerInvestmentSessionResponses,
+  CancelPartnerSpvData,
+  CancelPartnerSpvErrors,
+  CancelPartnerSpvInviteLinkData,
+  CancelPartnerSpvInviteLinkErrors,
+  CancelPartnerSpvInviteLinkResponses,
+  CancelPartnerSpvResponses,
+  ClosePartnerSpvData,
+  ClosePartnerSpvErrors,
+  ClosePartnerSpvResponses,
   CloseSyndicateDealData,
   CloseSyndicateDealErrors,
   CloseSyndicateDealResponses,
   CreateIntentData,
   CreateIntentErrors,
   CreateIntentResponses,
+  CreatePartnerInvestmentSessionData,
+  CreatePartnerInvestmentSessionErrors,
+  CreatePartnerInvestmentSessionResponses,
   CreatePartnerInviteData,
   CreatePartnerInviteErrors,
   CreatePartnerInviteResponses,
+  CreatePartnerSpvData,
+  CreatePartnerSpvErrors,
+  CreatePartnerSpvInviteLinkData,
+  CreatePartnerSpvInviteLinkErrors,
+  CreatePartnerSpvInviteLinkResponses,
+  CreatePartnerSpvResponses,
   CreateWebhookSubscriptionData,
   CreateWebhookSubscriptionErrors,
   CreateWebhookSubscriptionResponses,
@@ -51,6 +75,18 @@ import type {
   GetOfferingData,
   GetOfferingErrors,
   GetOfferingResponses,
+  GetPartnerInvestmentSessionData,
+  GetPartnerInvestmentSessionErrors,
+  GetPartnerInvestmentSessionResponses,
+  GetPartnerSpvData,
+  GetPartnerSpvErrors,
+  GetPartnerSpvInviteLinkData,
+  GetPartnerSpvInviteLinkErrors,
+  GetPartnerSpvInviteLinkResponses,
+  GetPartnerSpvResponses,
+  GetPartnerSpvStatusData,
+  GetPartnerSpvStatusErrors,
+  GetPartnerSpvStatusResponses,
   GetPortfolioData,
   GetPortfolioErrors,
   GetPortfolioResponses,
@@ -99,9 +135,24 @@ import type {
   ListOfferingsData,
   ListOfferingsErrors,
   ListOfferingsResponses,
+  ListPartnerInvestmentSessionsData,
+  ListPartnerInvestmentSessionsErrors,
+  ListPartnerInvestmentSessionsResponses,
   ListPartnerInvitesData,
   ListPartnerInvitesErrors,
   ListPartnerInvitesResponses,
+  ListPartnerSpvInvestmentsData,
+  ListPartnerSpvInvestmentsErrors,
+  ListPartnerSpvInvestmentsResponses,
+  ListPartnerSpvInvestorsData,
+  ListPartnerSpvInvestorsErrors,
+  ListPartnerSpvInvestorsResponses,
+  ListPartnerSpvInviteLinksData,
+  ListPartnerSpvInviteLinksErrors,
+  ListPartnerSpvInviteLinksResponses,
+  ListPartnerSpvsData,
+  ListPartnerSpvsErrors,
+  ListPartnerSpvsResponses,
   ListPortfolioPositionsData,
   ListPortfolioPositionsErrors,
   ListPortfolioPositionsResponses,
@@ -126,6 +177,9 @@ import type {
   ListWebhookSubscriptionsData,
   ListWebhookSubscriptionsErrors,
   ListWebhookSubscriptionsResponses,
+  OpenPartnerSpvData,
+  OpenPartnerSpvErrors,
+  OpenPartnerSpvResponses,
   PromoteSyndicateMemberData,
   PromoteSyndicateMemberErrors,
   PromoteSyndicateMemberResponses,
@@ -143,6 +197,9 @@ import type {
   ReorderSyndicateMembersData,
   ReorderSyndicateMembersErrors,
   ReorderSyndicateMembersResponses,
+  ResendPartnerSpvInviteLinkData,
+  ResendPartnerSpvInviteLinkErrors,
+  ResendPartnerSpvInviteLinkResponses,
   ResendSyndicateInviteData,
   ResendSyndicateInviteErrors,
   ResendSyndicateInviteResponses,
@@ -158,6 +215,9 @@ import type {
   TestWebhookSubscriptionData,
   TestWebhookSubscriptionErrors,
   TestWebhookSubscriptionResponses,
+  UpdatePartnerSpvInviteLinkData,
+  UpdatePartnerSpvInviteLinkErrors,
+  UpdatePartnerSpvInviteLinkResponses,
   UpdateSyndicateData,
   UpdateSyndicateErrors,
   UpdateSyndicateMemberData,
@@ -1563,5 +1623,564 @@ export const revokePartnerInvite = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/attribution/invites/{token}",
+    ...options,
+  });
+
+/**
+ * List SPVs
+ *
+ * Returns all SPVs created by the authenticated partner, newest first.
+ *
+ */
+export const listPartnerSpvs = <ThrowOnError extends boolean = false>(
+  options?: Options<ListPartnerSpvsData, ThrowOnError>,
+): RequestResult<
+  ListPartnerSpvsResponses,
+  ListPartnerSpvsErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    ListPartnerSpvsResponses,
+    ListPartnerSpvsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/partner/spvs",
+    ...options,
+  });
+
+/**
+ * Create an SPV
+ *
+ * Creates a new SPV in `draft` status. Wefunder handles entity formation
+ * (Delaware Series LLC), document generation, payment rails, and compliance.
+ * The SPV does not accept investments until you call the open endpoint.
+ *
+ * Pass an `Idempotency-Key` header to make creation safe to retry.
+ *
+ */
+export const createPartnerSpv = <ThrowOnError extends boolean = false>(
+  options: Options<CreatePartnerSpvData, ThrowOnError>,
+): RequestResult<
+  CreatePartnerSpvResponses,
+  CreatePartnerSpvErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    CreatePartnerSpvResponses,
+    CreatePartnerSpvErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/partner/spvs",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+/**
+ * Get an SPV
+ *
+ * Returns full details and live metrics for a single SPV.
+ *
+ */
+export const getPartnerSpv = <ThrowOnError extends boolean = false>(
+  options: Options<GetPartnerSpvData, ThrowOnError>,
+): RequestResult<GetPartnerSpvResponses, GetPartnerSpvErrors, ThrowOnError> =>
+  (options.client ?? client).get<
+    GetPartnerSpvResponses,
+    GetPartnerSpvErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/partner/spvs/{id}",
+    ...options,
+  });
+
+/**
+ * Open an SPV
+ *
+ * Transitions an SPV from `draft` to `open` so it can accept investments.
+ * On success the SPV gains an `invest_url`.
+ *
+ */
+export const openPartnerSpv = <ThrowOnError extends boolean = false>(
+  options: Options<OpenPartnerSpvData, ThrowOnError>,
+): RequestResult<OpenPartnerSpvResponses, OpenPartnerSpvErrors, ThrowOnError> =>
+  (options.client ?? client).post<
+    OpenPartnerSpvResponses,
+    OpenPartnerSpvErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/partner/spvs/{id}/open",
+    ...options,
+  });
+
+/**
+ * Close an SPV
+ *
+ * Transitions an `open` SPV to `closing` and creates a disburse intent that a
+ * Wefunder advisor must approve to finalize the close. No new investments are
+ * accepted. The response returns the SPV and a `disburse_intent` in `meta` whose
+ * `review_url` is the approval link; a repeated call returns the same pending intent.
+ * Returns `422 close_blocked` if the SPV has no investments to disburse. Track
+ * progress with the status endpoint.
+ *
+ */
+export const closePartnerSpv = <ThrowOnError extends boolean = false>(
+  options: Options<ClosePartnerSpvData, ThrowOnError>,
+): RequestResult<
+  ClosePartnerSpvResponses,
+  ClosePartnerSpvErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    ClosePartnerSpvResponses,
+    ClosePartnerSpvErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/partner/spvs/{id}/close",
+    ...options,
+  });
+
+/**
+ * Get SPV status
+ *
+ * Returns the SPV's lifecycle status plus orthogonal progress flags — the
+ * answer to "where is this SPV and what is it waiting on".
+ *
+ */
+export const getPartnerSpvStatus = <ThrowOnError extends boolean = false>(
+  options: Options<GetPartnerSpvStatusData, ThrowOnError>,
+): RequestResult<
+  GetPartnerSpvStatusResponses,
+  GetPartnerSpvStatusErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetPartnerSpvStatusResponses,
+    GetPartnerSpvStatusErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/partner/spvs/{id}/status",
+    ...options,
+  });
+
+/**
+ * Cancel an SPV
+ *
+ * Cancels an SPV that is in `draft` or `open` (an SPV in `closing` cannot be
+ * canceled, and one whose funds have been disbursed returns `already_disbursed`).
+ * Because cancellation aborts the raise and refunds investors — a dangerous,
+ * irreversible operation — it creates a **cancel intent** that a Wefunder advisor
+ * must approve; the abort and refunds run when the intent is approved, not
+ * immediately. The response returns the SPV and a `cancel_intent` in `meta` whose
+ * `review_url` is the approval link. Repeated calls return the same pending intent.
+ * Emits the `spv.canceled` webhook when the intent executes.
+ *
+ */
+export const cancelPartnerSpv = <ThrowOnError extends boolean = false>(
+  options: Options<CancelPartnerSpvData, ThrowOnError>,
+): RequestResult<
+  CancelPartnerSpvResponses,
+  CancelPartnerSpvErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    CancelPartnerSpvResponses,
+    CancelPartnerSpvErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/partner/spvs/{id}/cancel",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+/**
+ * List invite links
+ *
+ * Returns all invite links for an SPV — both **reusable** (shareable, no
+ * recipient) and **per-person** (addressed to one email or Wefunder user),
+ * newest first. Per-person rows additionally carry a derived `status` and
+ * engagement timestamps.
+ *
+ */
+export const listPartnerSpvInviteLinks = <ThrowOnError extends boolean = false>(
+  options: Options<ListPartnerSpvInviteLinksData, ThrowOnError>,
+): RequestResult<
+  ListPartnerSpvInviteLinksResponses,
+  ListPartnerSpvInviteLinksErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    ListPartnerSpvInviteLinksResponses,
+    ListPartnerSpvInviteLinksErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/partner/spvs/{id}/invite_links",
+    ...options,
+  });
+
+/**
+ * Create an invite link
+ *
+ * Creates an invite link for an SPV. One endpoint, two shapes — the request
+ * body's recipient fields decide which:
+ *
+ * - **No recipient** → a **reusable** link (`reuse: true`): a shareable URL
+ * anyone can use, with optional `allocation_cents` budget and `max_uses`
+ * claim caps (analogous to a Stripe Payment Link).
+ * - **`email` or `wefunder_user_id`** → a **per-person** invite
+ * (`reuse: false`): pre-addressed to one recipient, optionally emailed, with
+ * a live-derived `status`.
+ *
+ * Validation: `email` and `wefunder_user_id` are mutually exclusive; an
+ * unresolvable `wefunder_user_id` is a 404; `max_uses` is rejected for
+ * per-person invites; recipient detail fields (`first_name`/`last_name`/
+ * `message`) and `send_email` require a recipient. The create is idempotent
+ * via `Idempotency-Key` (a replay returns 200 with the original link).
+ *
+ */
+export const createPartnerSpvInviteLink = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<CreatePartnerSpvInviteLinkData, ThrowOnError>,
+): RequestResult<
+  CreatePartnerSpvInviteLinkResponses,
+  CreatePartnerSpvInviteLinkErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    CreatePartnerSpvInviteLinkResponses,
+    CreatePartnerSpvInviteLinkErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/partner/spvs/{id}/invite_links",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+/**
+ * Cancel an invite link
+ *
+ * Soft-cancels an invite link: sets `active: false`, the URL stops working,
+ * and a per-person link's `status` becomes `revoked`. Engagement history is
+ * preserved — the row is never destroyed. Idempotent (canceling an
+ * already-canceled link is a no-op 200).
+ *
+ */
+export const cancelPartnerSpvInviteLink = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<CancelPartnerSpvInviteLinkData, ThrowOnError>,
+): RequestResult<
+  CancelPartnerSpvInviteLinkResponses,
+  CancelPartnerSpvInviteLinkErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).delete<
+    CancelPartnerSpvInviteLinkResponses,
+    CancelPartnerSpvInviteLinkErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/partner/spvs/{id}/invite_links/{invite_link_id}",
+    ...options,
+  });
+
+/**
+ * Get an invite link
+ *
+ * Returns a single invite link, including its engagement event timeline
+ * (`events`). Per-person links also carry the live-derived `status`.
+ *
+ */
+export const getPartnerSpvInviteLink = <ThrowOnError extends boolean = false>(
+  options: Options<GetPartnerSpvInviteLinkData, ThrowOnError>,
+): RequestResult<
+  GetPartnerSpvInviteLinkResponses,
+  GetPartnerSpvInviteLinkErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetPartnerSpvInviteLinkResponses,
+    GetPartnerSpvInviteLinkErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/partner/spvs/{id}/invite_links/{invite_link_id}",
+    ...options,
+  });
+
+/**
+ * Update an invite link
+ *
+ * Updates an invite link's terms. Only `allocation_cents` and `max_uses` are
+ * mutable; recipient identity, `reuse`, and the URL token cannot change. Any
+ * other fields in the body are ignored. Setting `max_uses` on a per-person
+ * link, or below the current `uses_count`, is rejected (422).
+ *
+ */
+export const updatePartnerSpvInviteLink = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<UpdatePartnerSpvInviteLinkData, ThrowOnError>,
+): RequestResult<
+  UpdatePartnerSpvInviteLinkResponses,
+  UpdatePartnerSpvInviteLinkErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).patch<
+    UpdatePartnerSpvInviteLinkResponses,
+    UpdatePartnerSpvInviteLinkErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/partner/spvs/{id}/invite_links/{invite_link_id}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+/**
+ * Resend an invite link
+ *
+ * Re-sends a per-person invite's email and records a `resend` event. Returns
+ * the link with its updated `events` timeline. Rejected (422) for a reusable
+ * link, a canceled link, or a recipient who declined or reported spam.
+ *
+ */
+export const resendPartnerSpvInviteLink = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<ResendPartnerSpvInviteLinkData, ThrowOnError>,
+): RequestResult<
+  ResendPartnerSpvInviteLinkResponses,
+  ResendPartnerSpvInviteLinkErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    ResendPartnerSpvInviteLinkResponses,
+    ResendPartnerSpvInviteLinkErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/partner/spvs/{id}/invite_links/{invite_link_id}/resend",
+    ...options,
+  });
+
+/**
+ * Bulk-create per-person invite links
+ *
+ * Creates many per-person invites in one request (up to 100). Each item must
+ * be addressed by `email` or `wefunder_user_id` — a reusable link cannot be
+ * created in bulk. **Partial success:** each item is created independently, so
+ * one bad item never blocks the rest. The response is `207 Multi-Status` with
+ * the created links in `data` and per-item failures in `errors` (each with its
+ * request `index`). A batch-level problem (not an array, empty, or over 100
+ * items) rejects the whole request with `422` and creates nothing.
+ *
+ */
+export const bulkCreatePartnerSpvInviteLinks = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<BulkCreatePartnerSpvInviteLinksData, ThrowOnError>,
+): RequestResult<
+  BulkCreatePartnerSpvInviteLinksResponses,
+  BulkCreatePartnerSpvInviteLinksErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    BulkCreatePartnerSpvInviteLinksResponses,
+    BulkCreatePartnerSpvInviteLinksErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/partner/spvs/{id}/invite_links/bulk",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+/**
+ * List investment sessions
+ *
+ * Lists your organization's investment sessions across all SPVs, newest first.
+ * Filter by `spv_id` and/or `status`.
+ *
+ */
+export const listPartnerInvestmentSessions = <
+  ThrowOnError extends boolean = false,
+>(
+  options?: Options<ListPartnerInvestmentSessionsData, ThrowOnError>,
+): RequestResult<
+  ListPartnerInvestmentSessionsResponses,
+  ListPartnerInvestmentSessionsErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    ListPartnerInvestmentSessionsResponses,
+    ListPartnerInvestmentSessionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/partner/investment_sessions",
+    ...options,
+  });
+
+/**
+ * Create an investment session
+ *
+ * Creates a single-use, recipient-specific hosted investment session (analogous to
+ * a Stripe Checkout Session) on the SPV named by `spv_id` in the body. The session
+ * walks one investor through accreditation, document signing, and payment, and
+ * produces a durable `Investment` on success. Returns a `url` the recipient opens
+ * to begin. If the recipient already has an active session on the SPV, that
+ * session is returned instead of creating a duplicate.
+ *
+ */
+export const createPartnerInvestmentSession = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<CreatePartnerInvestmentSessionData, ThrowOnError>,
+): RequestResult<
+  CreatePartnerInvestmentSessionResponses,
+  CreatePartnerInvestmentSessionErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    CreatePartnerInvestmentSessionResponses,
+    CreatePartnerInvestmentSessionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/partner/investment_sessions",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+/**
+ * Cancel an investment session
+ *
+ * Cancels a session so its link stops working. Valid while the session is
+ * `pending`, `in_progress`, or `abandoned`; repeating the call on an
+ * already-canceled session returns the same 200. A `completed` or `expired`
+ * session cannot be canceled (422 `session_not_cancelable`).
+ *
+ */
+export const cancelPartnerInvestmentSession = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<CancelPartnerInvestmentSessionData, ThrowOnError>,
+): RequestResult<
+  CancelPartnerInvestmentSessionResponses,
+  CancelPartnerInvestmentSessionErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).delete<
+    CancelPartnerInvestmentSessionResponses,
+    CancelPartnerInvestmentSessionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/partner/investment_sessions/{id}",
+    ...options,
+  });
+
+/**
+ * Get an investment session
+ *
+ * Returns the full session including an `events` timeline of durable platform
+ * events recorded about it.
+ *
+ */
+export const getPartnerInvestmentSession = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<GetPartnerInvestmentSessionData, ThrowOnError>,
+): RequestResult<
+  GetPartnerInvestmentSessionResponses,
+  GetPartnerInvestmentSessionErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetPartnerInvestmentSessionResponses,
+    GetPartnerInvestmentSessionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/partner/investment_sessions/{id}",
+    ...options,
+  });
+
+/**
+ * List SPV investments
+ *
+ * Returns all investments into an SPV with their status and amounts, one row per
+ * investment. Investor PII (name/email) is only included when the token holds
+ * `read:investors:pii`.
+ *
+ */
+export const listPartnerSpvInvestments = <ThrowOnError extends boolean = false>(
+  options: Options<ListPartnerSpvInvestmentsData, ThrowOnError>,
+): RequestResult<
+  ListPartnerSpvInvestmentsResponses,
+  ListPartnerSpvInvestmentsErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    ListPartnerSpvInvestmentsResponses,
+    ListPartnerSpvInvestmentsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/partner/spvs/{id}/investments",
+    ...options,
+  });
+
+/**
+ * List SPV investors
+ *
+ * Returns the SPV's investors, aggregated one row per investor (total invested,
+ * investment count, first invested at) — the investor-centric view of the cap
+ * table. Investor PII (name/email) is only included when the token holds
+ * `read:investors:pii`.
+ *
+ */
+export const listPartnerSpvInvestors = <ThrowOnError extends boolean = false>(
+  options: Options<ListPartnerSpvInvestorsData, ThrowOnError>,
+): RequestResult<
+  ListPartnerSpvInvestorsResponses,
+  ListPartnerSpvInvestorsErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    ListPartnerSpvInvestorsResponses,
+    ListPartnerSpvInvestorsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/partner/spvs/{id}/investors",
     ...options,
   });
