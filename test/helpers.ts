@@ -20,6 +20,10 @@ export function makeFetch(handler: Handler): { fetch: typeof fetch; calls: Recor
     );
     let body: string | undefined;
     if (typeof init?.body === "string") body = init.body;
+    else if (input instanceof Request && input.method !== "GET" && input.method !== "HEAD") {
+      const text = await input.clone().text();
+      body = text === "" ? undefined : text;
+    }
     const call: RecordedCall = { url, method, headers, body };
     calls.push(call);
     return handler(call);

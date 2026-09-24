@@ -116,9 +116,13 @@ Common resources are available through typed namespaces:
 
 ```ts
 const offerings = await wf.offerings.list({ sort: "newest" });
-const investments = await wf.investments.list();
+const investments = await wf.investments.list({ company_id: "co_example" });
 const portfolio = await wf.portfolio.get();
 ```
+
+Namespaces: `users`, `offerings`, `investments`, `portfolio`, `campaigns`, `syndicates`, `intents`, `attribution`, and `webhookEndpoints`.
+
+`wf.investments` is the Investment Delta API. `list()` without a cursor bootstraps; pass `updated_since` or the `meta.next_cursor` you saved from your last page to receive only records that changed since then. `next_cursor` is always present, even on the final page, so persist it after every sync.
 
 The methods available to a client depend on its OAuth scopes. Consult the [API reference](https://docs.wefunder.com/api-reference) for the scope required by each endpoint.
 
@@ -164,26 +168,73 @@ The SDK retries idempotent `GET` requests after transient network errors, `5xx` 
 
 ## Webhooks
 
-Use `constructEvent` to verify a webhook signature and parse its payload. Signature verification requires the raw request body.
+Webhooks deliver platform events (`investment.executed`, `offering.opened`, `investment.changed`, …) to an HTTPS endpoint you register. Every delivery is signed; the SDK verifies the signature, parses the envelope, and gives you a typed event.
+
+### 1. Register an endpoint
+
+Endpoints belong to your application and are managed through the live API (scope `write:webhooks`, org owner/admin/developer role). The signing secret is returned only on create and rotate, so store it immediately.
 
 ```ts
-import { constructEvent } from "@wefunder/sdk";
+const endpoint = await wf.webhookEndpoints.create({
+  url: "https://yourapp.com/webhooks/wefunder", // public HTTPS; localhost and private IPs are rejected
+  events: ["offering.opened", "investment.executed"],
+  mode: "live", // "test" endpoints receive sandbox events
+});
 
-app.post("/webhooks", express.raw({ type: "application/json" }), (req, res) => {
+await saveSecret(endpoint.attributes!.secret!);
+```
+
+`wf.webhookEndpoints` also provides `list`, `get`, `update`, `remove`, `rotateSecret`, `reenable`, and `test`.
+
+### 2. Verify and handle deliveries
+
+Pass the raw request body, the request headers, and your secret to `constructEvent`. It throws `WebhookSignatureError` (with a `reason`) when a delivery is not authentic.
+
+```ts
+import { constructEvent, dispatchWebhook, WebhookSignatureError } from "@wefunder/sdk";
+
+app.post("/webhooks/wefunder", express.raw({ type: "*/*" }), async (req, res) => {
+  let event;
   try {
-    const event = constructEvent(
-      req.body.toString("utf8"),
-      req.headers,
-      process.env.WEFUNDER_WEBHOOK_SECRET!,
-    );
-
-    queueWebhook(event);
-    res.sendStatus(200);
-  } catch {
-    res.status(400).send("Invalid signature");
+    event = constructEvent(req.body, req.headers, process.env.WEFUNDER_WEBHOOK_SECRET!);
+  } catch (err) {
+    if (err instanceof WebhookSignatureError) return res.status(400).send(err.reason);
+    throw err;
   }
+
+  res.sendStatus(200); // acknowledge first, then do the work
+
+  await dispatchWebhook(event, {
+    "investment.executed": async (e) => recordFunding(e.data.id, e.data.amounts.committed),
+    "offering.opened": async (e) => announce(e.data.company.name),
+    default: (e) => console.log("unhandled", e.event),
+  });
 });
 ```
+
+`event` is a discriminated union, so narrowing on `event.event` types `event.data` for you. For fetch-style servers (Next.js route handlers, Hono, Cloudflare Workers), use `constructEventFromRequest(request, secret)` instead.
+
+Deliveries are at-least-once and unordered. Deduplicate on `event.id`, and where a payload carries `occurred_at`, keep the state from the latest one you have seen.
+
+### 3. Test your handler
+
+`wf.webhookEndpoints.test(endpoint.id)` sends a real, signed example event to your endpoint and reports the outcome inline. To unit-test your handler without the API, sign a fixture yourself:
+
+```ts
+import { signWebhook } from "@wefunder/sdk";
+
+const body = JSON.stringify({ id: "evt_1", event: "offering.opened", created_at: "…", mode: "test", data: {…} });
+const header = signWebhook({ payload: body, secret });
+// POST `body` to your handler with `Wefunder-Signature: ${header}`
+```
+
+### Secret rotation
+
+`wf.webhookEndpoints.rotateSecret(id)` returns a new secret; the old one keeps signing for 24 hours, and deliveries carry a `v1` for each. `constructEvent` accepts either, so you can roll the new secret out to your servers without dropping an event.
+
+### Signature scheme
+
+Each delivery carries `Wefunder-Signature: t=<unix seconds>,v1=<hex>` where `v1` is `HMAC-SHA256(secret, "<t>.<raw body>")`. Requests whose `t` is more than five minutes from now are rejected (`toleranceSeconds` adjusts this). `verifyWebhook` and `checkWebhookSignature` expose the check without parsing, and `constructEvent` still accepts the retired attribution-webhook headers (`X-Wefunder-Signature`/`X-Wefunder-Timestamp`).
 
 ## Generated operations
 

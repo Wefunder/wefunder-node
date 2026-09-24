@@ -297,3 +297,113 @@ describe("public unwrap for raw ops (stress-test C)", () => {
     );
   });
 });
+
+describe("webhookEndpoints namespace", () => {
+  const endpoint = {
+    id: "whe_1",
+    type: "webhook_endpoint",
+    attributes: { url: "https://example.com/hooks", mode: "live", events: ["offering.opened"], enabled: true },
+  };
+
+  it("create POSTs the body, unwraps data, and surfaces the one-time secret", async () => {
+    const { fetch, calls } = makeFetch(() =>
+      json({ data: { ...endpoint, attributes: { ...endpoint.attributes, secret: "whsec_once" } } }, { status: 201 }),
+    );
+    const wf = new Wefunder({ accessToken: "at_live_x", fetch, sleep: noSleep });
+    const created = await wf.webhookEndpoints.create({
+      url: "https://example.com/hooks",
+      events: ["offering.opened", "investment.executed"],
+      mode: "live",
+    });
+    expect(calls[0]!.method).toBe("POST");
+    expect(new URL(calls[0]!.url).pathname).toBe("/webhook_endpoints");
+    expect(JSON.parse(calls[0]!.body!)).toEqual({
+      url: "https://example.com/hooks",
+      events: ["offering.opened", "investment.executed"],
+      mode: "live",
+    });
+    expect(created.attributes?.secret).toBe("whsec_once");
+  });
+
+  it("list returns the envelope (meta.quota), get/update/remove/rotateSecret/reenable hit the right paths", async () => {
+    const { fetch, calls } = makeFetch((c) => {
+      if (c.method === "DELETE") return json({ data: { id: "whe_1", type: "webhook_endpoint", removed: true } });
+      if (c.url.endsWith("/webhook_endpoints")) return json({ data: [endpoint], meta: { count: 1, quota: 10 } });
+      return json({ data: endpoint });
+    });
+    const wf = new Wefunder({ accessToken: "at_live_x", fetch, sleep: noSleep });
+
+    const list = await wf.webhookEndpoints.list();
+    expect(list.data).toHaveLength(1);
+    expect(list.meta?.quota).toBe(10);
+
+    expect((await wf.webhookEndpoints.get("whe_1")).id).toBe("whe_1");
+    await wf.webhookEndpoints.update("whe_1", { events: ["investment.executed"] });
+    await wf.webhookEndpoints.rotateSecret("whe_1");
+    await wf.webhookEndpoints.reenable("whe_1");
+    expect((await wf.webhookEndpoints.remove("whe_1")).removed).toBe(true);
+
+    const seen = calls.map((c) => `${c.method} ${new URL(c.url).pathname}`);
+    expect(seen).toEqual([
+      "GET /webhook_endpoints",
+      "GET /webhook_endpoints/whe_1",
+      "PATCH /webhook_endpoints/whe_1",
+      "POST /webhook_endpoints/whe_1/rotate_secret",
+      "POST /webhook_endpoints/whe_1/reenable",
+      "DELETE /webhook_endpoints/whe_1",
+    ]);
+    expect(JSON.parse(calls[2]!.body!)).toEqual({ events: ["investment.executed"] });
+  });
+
+  it("test sends the optional event and unwraps the outcome", async () => {
+    const { fetch, calls } = makeFetch(() =>
+      json({ data: { type: "webhook_test", delivered: true, response_code: 200, error: null, event: "offering.opened" } }),
+    );
+    const wf = new Wefunder({ accessToken: "at_live_x", fetch, sleep: noSleep });
+    const outcome = await wf.webhookEndpoints.test("whe_1", "offering.opened");
+    expect(outcome.delivered).toBe(true);
+    expect(new URL(calls[0]!.url).pathname).toBe("/webhook_endpoints/whe_1/test");
+    expect(JSON.parse(calls[0]!.body!)).toEqual({ event: "offering.opened" });
+
+    await wf.webhookEndpoints.test("whe_1");
+    expect(calls[1]!.body ?? "").toBe("");
+  });
+
+  it("surfaces the sandbox write refusal as a typed WefunderError", async () => {
+    const { fetch } = makeFetch(() =>
+      json(
+        { error: { type: "manage_endpoints_on_live_api", message: "Manage them through the live API", request_id: "req_1" } },
+        { status: 403 },
+      ),
+    );
+    const wf = new Wefunder({ accessToken: "at_test_x", fetch, sleep: noSleep });
+    await expect(
+      wf.webhookEndpoints.create({ url: "https://example.com/h", events: ["offering.opened"], mode: "test" }),
+    ).rejects.toMatchObject({ status: 403, type: "manage_endpoints_on_live_api", requestId: "req_1" });
+  });
+});
+
+describe("investments namespace (delta API)", () => {
+  it("forwards filters, stops on has_more=false even though next_cursor is always present", async () => {
+    const { fetch, calls } = makeFetch((c) => {
+      const cursor = new URL(c.url).searchParams.get("cursor");
+      if (!cursor) return json({ data: [{ id: "inv_1", visible: true }], meta: { mode: "delta", has_more: true, next_cursor: "c1" } });
+      return json({ data: [{ id: "inv_2", visible: false }], meta: { mode: "delta", has_more: false, next_cursor: "c2" } });
+    });
+    const wf = new Wefunder({ accessToken: "at_live_x", fetch, sleep: noSleep });
+    const ids = (await wf.investments.collect({ company_id: "co_1", updated_since: "2026-09-01T00:00:00Z" })).map((i) => i.id);
+    expect(ids).toEqual(["inv_1", "inv_2"]);
+    expect(calls).toHaveLength(2);
+    const q = new URL(calls[1]!.url).searchParams;
+    expect(q.get("company_id")).toBe("co_1");
+    expect(q.get("updated_since")).toBe("2026-09-01T00:00:00Z");
+    expect(q.get("cursor")).toBe("c1");
+  });
+
+  it("get fetches one record by inv_ id", async () => {
+    const { fetch, calls } = makeFetch(() => json({ data: { id: "inv_9", visible: true }, meta: { source: "current" } }));
+    const wf = new Wefunder({ accessToken: "at_live_x", fetch, sleep: noSleep });
+    expect((await wf.investments.get("inv_9")).id).toBe("inv_9");
+    expect(new URL(calls[0]!.url).pathname).toBe("/investments/inv_9");
+  });
+});
