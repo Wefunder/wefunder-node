@@ -4,6 +4,291 @@ export type ClientOptions = {
   baseUrl: "https://{environment}.wefunder.com/api/v2" | (string & {});
 };
 
+export type Installation = {
+  /**
+   * Installation external id (`inst_…`).
+   */
+  id?: string;
+  type?: string;
+  attributes?: {
+    target?: {
+      type?: "company" | "syndicate";
+      /**
+       * `co_…` or `syn_…`
+       */
+      id?: string;
+      name?: string;
+    };
+    /**
+     * founder / admin / editor for a company; full_access / operator for a syndicate.
+     */
+    tier?: string;
+    scopes?: Array<string>;
+    status?: "active" | "revoked";
+    installed_at?: string;
+    installed_by?: string | null;
+    revoked_at?: string | null;
+  };
+};
+
+export type InstallationEnvelope = {
+  data?: Installation;
+  meta?: {
+    [key: string]: unknown;
+  };
+};
+
+export type InstallationListEnvelope = {
+  data?: Array<Installation>;
+  meta?: {
+    count?: number;
+  };
+};
+
+export type InstallationTokenEnvelope = {
+  data?: Installation;
+  /**
+   * Shown once. Owned by the installed-on company or syndicate, scoped to the install, no expiry; revoking the install revokes it.
+   */
+  token?: {
+    access_token?: string;
+    token_type?: string;
+    scope?: string;
+    /**
+     * `inst_…`
+     */
+    installation?: string;
+    created_at?: number;
+  };
+  meta?: {
+    [key: string]: unknown;
+  };
+};
+
+export type EligibleTargetListEnvelope = {
+  data?: Array<{
+    type?: "company" | "syndicate";
+    id?: string;
+    name?: string;
+    /**
+     * The tier an install would be granted at.
+     */
+    tier?: string;
+    installed?: boolean;
+    installation?: Installation | null;
+  }>;
+  meta?: {
+    [key: string]: unknown;
+  };
+};
+
+export type WebhookEndpoint = {
+  id?: string;
+  type?: string;
+  attributes?: {
+    url?: string;
+    mode?: "live" | "test";
+    events?: Array<string>;
+    enabled?: boolean;
+    /**
+     * Signing secret. Present only in create and rotate_secret responses.
+     */
+    secret?: string;
+    failing_since?: string | null;
+    last_delivery_at?: string | null;
+    /**
+     * Outcome of the most recent delivery: the HTTP status code as a string (for
+     * example `"200"` or `"503"`), or, when no response came back, one of
+     * `timeout`, `blocked_url`, `tls_error`, `connection_failed`.
+     *
+     */
+    last_delivery_status?: string | null;
+    created_at?: string;
+  };
+};
+
+export type WebhookEndpointEnvelope = {
+  data?: WebhookEndpoint;
+  meta?: {
+    request_id?: string;
+  };
+};
+
+export type WebhookEndpointListEnvelope = {
+  data?: Array<WebhookEndpoint>;
+  meta?: {
+    count?: number;
+    /**
+     * Maximum endpoints allowed for this application.
+     */
+    quota?: number;
+    request_id?: string;
+  };
+};
+
+export type WebhookEndpointTestResultEnvelope = {
+  data?: {
+    type?: string;
+    delivered?: boolean;
+    response_code?: number | null;
+    /**
+     * Why no HTTP response came back. `null` when the endpoint responded, even with a
+     * non-2xx status (see `response_code`). `blocked_url` means the URL failed the
+     * HTTPS/public-address check at send time.
+     *
+     */
+    error?:
+      "timeout" | "blocked_url" | "tls_error" | "connection_failed" | null;
+    duration_ms?: number;
+    event?: string;
+    /**
+     * The exact signed envelope that was POSTed.
+     */
+    payload?: {
+      [key: string]: unknown;
+    };
+  };
+  meta?: {
+    request_id?: string;
+  };
+};
+
+export type InvestmentChangeListEnvelope = {
+  data?: Array<InvestmentDeltaRecord>;
+  meta?: {
+    mode?: "bootstrap" | "delta";
+    has_more?: boolean;
+    /**
+     * Always present. Pass it back as `cursor` on the next call, even when `has_more` is false.
+     */
+    next_cursor?: string;
+    page_count?: number;
+    company_id?: string;
+  };
+};
+
+/**
+ * The record of one investment, or a tombstone (`visible: false`, only `id`). `visible` is
+ * founder visibility: a user's own canceled investment is a full record with `visible: false`
+ * and `status: canceled`. Investor PII keys are omitted without `read:investors:pii`, except on
+ * the user's own records.
+ *
+ */
+export type InvestmentDeltaRecord = {
+  /**
+   * Investment external id (`inv_…`), stable for the life of the investment.
+   */
+  id: string;
+  visible: boolean;
+  /**
+   * Company/offering audiences receive canceled and converted investments as tombstones; the values appear for audiences that can see them (e.g. the investor's own).
+   */
+  status?: "reserved" | "active" | "executed" | "canceled" | "converted";
+  converted_to?: string | null;
+  converted_from?: string | null;
+  /**
+   * Offering external id (`ofr_…`).
+   */
+  offering?: string;
+  /**
+   * Company external id (`co_…`).
+   */
+  company?: string;
+  investment_type?: string;
+  offering_type?: string;
+  /**
+   * The founder dashboard's investment group label (e.g. CONFIRMED, IS READY).
+   */
+  group?: string;
+  applied_at?: string;
+  amounts?: {
+    committed_cents?: number;
+    investment_size_cents?: number;
+    in_escrow_cents?: number;
+    /**
+     * What this investment contributes to the offering's public raised figure (the deal page, company card and directory header). Equals `investment_size_cents` once the investment is soft-confirmed; 0 until then (see `needs_whitelisting`). Summing `raised_cents` over an offering's records reproduces the site's number; summing `committed_cents` does not.
+     */
+    raised_cents?: number;
+    currency?: string;
+  };
+  /**
+   * Shares this investment buys at its committed amount, as a decimal string (`"295"`, `"1234.5"`). For an investment through the SPV this is the company shares allotted to it through the vehicle. `null` when the round has no share concept (SAFE, note, reservation) or no shares are computed for the investment. Computed per investment; not the investor's post-funding position.
+   */
+  shares?: string | null;
+  /**
+   * Weighted average price per share for this investment (total share price / `shares`), as a decimal string. With tiered or early-bird pricing this need not equal any single price on the round. `null` whenever `shares` is `null`.
+   */
+  average_share_price?: string | null;
+  needs_whitelisting?: boolean;
+  /**
+   * PII scope.
+   */
+  external_username?: string | null;
+  /**
+   * PII scope.
+   */
+  message?: string | null;
+  investor?: {
+    /**
+     * Investor external id (`usr_…`).
+     */
+    id?: string;
+    /**
+     * True once the investor's Wefunder account has been deactivated. The identity fields are then
+     * redacted (`name`/`legal_name` = `[deleted user]`, the rest null) and the record is republished
+     * with `reason: investor_deactivated`; overwrite your copy. The investment itself persists.
+     *
+     */
+    deactivated?: boolean;
+    via_entity?: boolean;
+    /**
+     * PII scope.
+     */
+    name?: string;
+    /**
+     * PII scope.
+     */
+    legal_name?: string;
+    /**
+     * PII scope.
+     */
+    email?: string | null;
+    /**
+     * PII scope.
+     */
+    address?: {
+      [key: string]: unknown;
+    };
+    /**
+     * PII scope.
+     */
+    bio?: string | null;
+  };
+  blockers?: Array<{
+    key?: string;
+    description?: string | null;
+  }>;
+  contracts?: Array<{
+    name?: string | null;
+    override_amount_cents?: number | null;
+    early_bird?: boolean;
+  }>;
+  /**
+   * When this payload was observed by the publisher. Not a version.
+   */
+  observed_at: string;
+  /**
+   * Ledger position of the change that listed this record (delta pages only).
+   */
+  cursor?: string | null;
+  /**
+   * Why the ledger row exists. `investor_deactivated` marks the first republish after the investor's
+   * account was deactivated (identity fields redacted). Delta pages only.
+   *
+   */
+  reason?: "changed" | "reprojected" | "investor_deactivated";
+};
+
 export type AttributedInvestmentListEnvelope = {
   /**
    * Returns AnonymizedAttribution or FullAttribution objects
@@ -138,6 +423,12 @@ export type OfferingListEnvelope = {
      */
     sort?: string;
     /**
+     * The filters applied to this response (validated values), empty when none.
+     */
+    filters?: {
+      [key: string]: unknown;
+    };
+    /**
      * Opaque pagination cursor — pass as `cursor` to fetch the next page. Present only when `has_more` is true.
      */
     next_cursor?: number | null;
@@ -227,6 +518,75 @@ export type IntentEnvelope = {
   data?: Intent;
 };
 
+export type IntentPreviewEnvelope = {
+  data?: {
+    type?: "intent_preview";
+    attributes?: {
+      action?: string;
+      resource_type?: string;
+      /**
+       * The resource's external id (`co_...`, `syn_...`).
+       */
+      resource_id?: string;
+      params?: {
+        [key: string]: unknown;
+      };
+      /**
+       * What the review page would show the approver.
+       */
+      impact_summary?: string;
+      /**
+       * The scope `POST /intents` requires for this action.
+       */
+      scope?: string;
+    };
+  };
+};
+
+/**
+ * What propose_comment returns — a dry run of comments.create plus the context an agent needs before minting.
+ */
+export type CommentProposalEnvelope = {
+  /**
+   * The arguments, as normalized, to pass to write_comment_intent once the user confirms.
+   */
+  proposal?: {
+    company_id?: string;
+    target_type?: "company" | "comment";
+    target?: string;
+    body?: string;
+    disclosure_key?: string | null;
+  };
+  allowed?: boolean;
+  /**
+   * The handler's reason when `allowed` is false.
+   */
+  refusal?: string | null;
+  /**
+   * The dry run (null when `allowed` is false). Same shape as IntentPreviewEnvelope's attributes.
+   */
+  draft?: {
+    action?: string;
+    resource_type?: string;
+    resource_id?: string;
+    params?: {
+      [key: string]: unknown;
+    };
+    impact_summary?: string;
+    scope?: string;
+  } | null;
+  related_questions?: Array<{
+    id?: string;
+    question?: string | null;
+    asked_at?: string | null;
+    answered_by_team?: boolean;
+    answers?: Array<string | null>;
+    url?: string | null;
+  }>;
+  drafting_guidelines?: string;
+  next_step?: string;
+};
+
 export type IntentListEnvelope = {
   data?: Array<Intent>;
   meta?: PaginationMeta;
@@ -237,7 +597,7 @@ export type IntentListEnvelope = {
  */
 export type IntentReview = {
   /**
-   * The intent's id (Intent has a UUID primary key).
+   * The intent's id (`int_...`). Poll it at `GET /intents/{intent_id}`.
    */
   id?: string;
   status?: string;
@@ -245,8 +605,65 @@ export type IntentReview = {
 };
 
 export type InvestmentListEnvelope = {
-  data?: Array<Investment>;
-  meta?: PaginationMeta;
+  data?: Array<InvestmentDeltaRecord>;
+  meta?: {
+    /**
+     * `bootstrap` for list pages, `delta` for sync pages (cursor or updated_since).
+     */
+    mode?: "bootstrap" | "delta";
+    has_more?: boolean;
+    /**
+     * Always present. Pass it back as `cursor` on the next call, even when `has_more` is false.
+     */
+    next_cursor?: string;
+    page_count?: number;
+    /**
+     * When the newest change this page can reflect was published. Records changed after this arrive on the next sync.
+     */
+    published_through?: string | null;
+  };
+};
+
+export type InvestmentEnvelope = {
+  data?: InvestmentDeltaRecord;
+  meta?: {
+    source?: "current";
+    /**
+     * `observed_at` of the published record, or null if never published.
+     */
+    published_observed_at?: string | null;
+    /**
+     * Whether the published record equals this current one; null if never published.
+     */
+    published_matches?: boolean | null;
+  };
+};
+
+export type OfferingStatsEnvelope = {
+  data?: {
+    offering?: string;
+    company?: string;
+    currency?: string | null;
+    by_status?: {
+      [key: string]: {
+        count?: number;
+        committed_cents?: number;
+        raised_cents?: number;
+      };
+    };
+    total?: {
+      count?: number;
+      committed_cents?: number;
+      /**
+       * The offering's public raised figure rebuilt from the records' `amounts.raised_cents`. The campaign ticker may add sibling Reg D rounds under its roll-in policy.
+       */
+      raised_cents?: number;
+    };
+  };
+  meta?: {
+    source?: "published";
+    published_through?: string | null;
+  };
 };
 
 export type InvestmentSessionEnvelope = {
@@ -416,6 +833,91 @@ export type SyndicateStatisticsEnvelope = {
   data?: SyndicateStatistics;
 };
 
+/**
+ * One company on the authenticated user's watchlist (GET /users/me/follows).
+ */
+export type FollowedCompany = {
+  /**
+   * The company's id (`co_...`) for `GET /companies/{id}`.
+   */
+  id?: string;
+  type?: "company";
+  attributes?: {
+    name?: string | null;
+    tagline?: string | null;
+    url?: string | null;
+    logo_url?: string | null;
+    /**
+     * True when the company has a round accepting investments right now.
+     */
+    raising?: boolean;
+    /**
+     * Whether `GET /companies/{id}` will serve this company to this user.
+     */
+    profile_available?: boolean;
+    followed_at?: string | null;
+  };
+};
+
+export type FollowedCompanyListEnvelope = {
+  data?: Array<FollowedCompany>;
+  meta?: PaginationMeta;
+};
+
+export type FollowStateEnvelope = {
+  data?: {
+    /**
+     * The company's id (`co_...`).
+     */
+    id?: string | null;
+    type?: "follow_state";
+    attributes?: {
+      /**
+       * Whether the user follows the company after this call.
+       */
+      followed?: boolean;
+      /**
+       * Whether this call changed anything (false when already in the requested state).
+       */
+      changed?: boolean;
+    };
+  };
+};
+
+/**
+ * One of the authenticated user's own companies (GET /users/me/companies).
+ */
+export type MyCompany = {
+  /**
+   * The company's id (`co_...`) — what the founder-scoped endpoints take.
+   */
+  id?: string;
+  type?: "company";
+  attributes?: {
+    name?: string;
+    tagline?: string | null;
+    /**
+     * The company's Wefunder page.
+     */
+    url?: string | null;
+    /**
+     * The user's roles on this company.
+     */
+    roles?: Array<string>;
+    /**
+     * True when a round is currently accepting investments or reservations.
+     */
+    raising?: boolean;
+  };
+};
+
+export type MyCompanyListEnvelope = {
+  data?: Array<MyCompany>;
+  meta?: {
+    count?: number;
+  };
+};
+
 export type UserEnvelope = {
   data?: User;
 };
@@ -453,10 +955,47 @@ export type Offering = {
     logo_url?: string | null;
     exemption?: Exemption;
     /**
-     * The financial instrument (e.g. safe, convertible_note, equity, priced_round, fund).
+     * What the offering issues, as a discriminated union on `type` (see `Security`).
+     * Null for a Testing-the-Waters round, which has no final terms yet — see
+     * `intended_security` for what it plans to issue.
+     *
      */
-    security_type?: string;
-    state?: string;
+    security?: Security | null;
+    /**
+     * Testing-the-Waters rounds only: the kind of security the company says it intends to
+     * issue when the round opens, with no terms (none are final). Null for a live round,
+     * and for a TTW round whose terms are still to be decided.
+     *
+     */
+    intended_security?: {
+      type?:
+        | "safe"
+        | "equity"
+        | "convertible_note"
+        | "revenue_share"
+        | "debt"
+        | "fund";
+      label?: string;
+    } | null;
+    /**
+     * The company's curated industry tags (the ones the site's explore page filters by),
+     * as `{ type, label }`. Empty when none are set. Filterable via `industry`.
+     *
+     */
+    industries?: Array<TagRef>;
+    /**
+     * The company's curated business-model tags, as `{ type, label }`. Filterable via `business_model`.
+     */
+    business_models?: Array<TagRef>;
+    /**
+     * Where the round is in its life. `open` accepts investments (or reservations, for
+     * a Testing-the-Waters round); `closed` finished raising; `upcoming` is not yet
+     * accepting (insiders only); `canceled` was aborted. How close an open round is
+     * to closing is `closes_at`; whether it is over target is `amount_raised` vs
+     * `funding_target`.
+     *
+     */
+    status?: "upcoming" | "open" | "closed" | "canceled";
     /**
      * True for Testing-the-Waters rounds, which collect non-binding **reservations**, not
      * investments. Use "reserve"/"reservation" copy for these, "invest"/"investment" otherwise.
@@ -472,39 +1011,769 @@ export type Offering = {
      */
     min_investment?: string | null;
     /**
-     * Amount raised so far in USD, as a decimal string (hellbanned investors excluded).
+     * Amount raised so far **by this offering** in USD, as a decimal string (hellbanned
+     * investors excluded). Not the company's lifetime total, and not the combined figure
+     * the company's Wefunder page shows when a Reg D round runs alongside — see `warnings`.
+     *
      */
     amount_raised?: string | null;
     /**
-     * Distinct investor count (hellbanned investors excluded).
+     * Distinct investor count for this offering (hellbanned investors excluded).
      */
     investor_count?: number | null;
     started_at?: string | null;
-    closed_at?: string | null;
-  };
-  /**
-   * Reference to the parent company.
-   */
-  company?: {
     /**
-     * The company's id (`co_...`).
+     * When an open round is scheduled to stop accepting investments. Null when no date is set or the round is not open.
      */
-    id?: string;
-    type?: string;
+    closes_at?: string | null;
+    closed_at?: string | null;
+    /**
+     * **Logged-in view only** (`read:explore`). `false` when a logged-out visitor could
+     * not see this offering — it is in the response only because of who the authorizing
+     * user is (accredited, invited, Vault/syndicate member). Absent in the public view.
+     *
+     */
+    publicly_visible?: boolean;
+    /**
+     * **Logged-in view only** (`read:explore`). Whether the authorizing user has an
+     * active investment in this offering. Absent in the public view.
+     *
+     */
+    invested?: boolean;
+    /**
+     * **Logged-in view only** (`read:explore`). Whether the authorizing user follows this
+     * company on wefunder.com (their watchlist). Absent in the public view.
+     *
+     */
+    followed?: boolean;
   };
   /**
-   * Content digest of this offering's public payload, for client-side change detection
-   * when polling.
+   * The parent company's id (`co_...`). Resolve it with `GET /companies/{id}`.
+   */
+  company?: string | null;
+  /**
+   * Context for reading this offering's numbers correctly. Empty for most offerings.
+   * `concurrent_rounds`: the company has other open rounds (e.g. a Reg D round alongside
+   * this one), so the company's Wefunder page shows a combined total larger than
+   * `amount_raised`. `prior_rounds`: the company completed earlier rounds on Wefunder, so
+   * `amount_raised` is not its lifetime total. Not part of the `etag`.
+   *
+   */
+  warnings?: Array<{
+    code?: "concurrent_rounds" | "prior_rounds";
+    message?: string;
+  }>;
+  /**
+   * Content digest of this offering's public payload (`attributes`), for client-side change
+   * detection when polling. `warnings` are not included.
    *
    */
   etag?: string;
 };
 
 /**
+ * One company from the site search bar (GET /companies/search).
+ */
+export type CompanySearchResult = {
+  /**
+   * The company's id (`co_...`) for `GET /companies/{id}`.
+   */
+  id?: string;
+  type?: "company";
+  attributes?: {
+    name?: string | null;
+    tagline?: string | null;
+    /**
+     * The company's Wefunder page.
+     */
+    url?: string | null;
+    logo_url?: string | null;
+    /**
+     * True when the company is raising now (the site's "Raising Now" badge). False means the
+     * site shows its "Funded" badge, which it also shows for companies with no live round
+     * (including ones whose last round was aborted); it is not a statement that a raise closed
+     * successfully.
+     *
+     */
+    raising?: boolean;
+    /**
+     * Whether `GET /companies/{id}` will serve this company to this viewer. Since the company
+     * page serves every publicly listed profile, this is false only for an index hit whose
+     * live row no longer clears the site's bar (or an accredited-only company seen without
+     * accreditation). Link to `url` when false.
+     *
+     */
+    profile_available?: boolean;
+  };
+};
+
+export type CompanySearchResultListEnvelope = {
+  data?: Array<CompanySearchResult>;
+  meta?: {
+    query?: string;
+    count?: number;
+  };
+};
+
+export type CompanyDisclosuresEnvelope = {
+  data?: CompanyDisclosures;
+};
+
+/**
+ * The company's public Form C disclosures (the site's Details tab), one section per key. A section is null when the company hides it on the site.
+ */
+export type CompanyDisclosures = {
+  /**
+   * The company's id (`co_...`).
+   */
+  id?: string;
+  type?: "company_disclosures";
+  attributes?: {
+    /**
+     * The round whose Form C this is (`ofr_...`).
+     */
+    offering_id?: string;
+    filing?: {
+      exemption?: Exemption;
+      /**
+       * The filing on sec.gov, when filed.
+       */
+      sec_filing_url?: string | null;
+      filed?: boolean;
+      /**
+       * The date the financial statements are as of.
+       */
+      statement_date?: string | null;
+      /**
+       * `--MM-DD` (ISO 8601 recurring date), e.g. `--12-31`.
+       */
+      fiscal_year_end?: string | null;
+    };
+    business?: {
+      legal_name?: string | null;
+      legal_form?: string | null;
+      jurisdiction?: string | null;
+      incorporated_on?: string | null;
+      employees?: number | null;
+    };
+    /**
+     * One column per fiscal year on file; a year with no figures is omitted.
+     */
+    financial_statements?: {
+      most_recent?: FiscalYearFinancials;
+      prior?: FiscalYearFinancials;
+      prior_prior?: FiscalYearFinancials;
+    };
+    /**
+     * The page's at-a-glance ratios for the most recent fiscal year, percentages as decimal strings; null where the page shows N/A, or the whole block null when hidden for this company.
+     */
+    ratios?: {
+      /**
+       * Net income / revenue × 100.
+       */
+      net_margin_percent?: string | null;
+      /**
+       * (Revenue − cost of goods sold) / revenue × 100.
+       */
+      gross_margin_percent?: string | null;
+      /**
+       * Net income / total assets × 100.
+       */
+      return_on_assets_percent?: string | null;
+      /**
+       * (Short-term + long-term debt) / total assets × 100.
+       */
+      debt_to_assets_percent?: string | null;
+      /**
+       * Cash / total assets × 100.
+       */
+      cash_to_assets_percent?: string | null;
+      /**
+       * USD, decimal string.
+       */
+      revenue_per_employee?: string | null;
+    } | null;
+    /**
+     * The founder's own disclosure of where the company stands today, each field when supplied.
+     */
+    current_position?: {
+      /**
+       * USD, decimal string.
+       */
+      cash_on_hand?: string | null;
+      cash_on_hand_as_of?: string | null;
+      /**
+       * USD, decimal string.
+       */
+      average_monthly_revenue?: string | null;
+      /**
+       * USD, decimal string.
+       */
+      average_monthly_cost_of_goods?: string | null;
+      /**
+       * USD, decimal string.
+       */
+      average_monthly_expenses?: string | null;
+      /**
+       * USD, decimal string.
+       */
+      average_monthly_burn?: string | null;
+    };
+    /**
+     * The issuer's financial-condition narrative, plain text.
+     */
+    financial_condition?: string | null;
+    financial_statement_documents?: Array<DisclosureDocument>;
+    /**
+     * The contracts an investor signs (the page's "Investment Terms").
+     */
+    investment_documents?: Array<DisclosureDocument>;
+    /**
+     * The issuer's risk factors, in the page's order, plain text.
+     */
+    risks?: Array<string>;
+    /**
+     * How the company says it will use the money at each amount raised.
+     */
+    use_of_funds?: Array<{
+      /**
+       * USD, decimal string.
+       */
+      if_raised?: string | null;
+      plan?: string | null;
+    }> | null;
+    directors?: Array<DisclosurePerson> | null;
+    officers?: Array<DisclosurePerson> | null;
+    /**
+     * Holders of 20% or more of voting power, as disclosed.
+     */
+    voting_power?: Array<{
+      name?: string | null;
+      /**
+       * Number and class of securities held, as disclosed.
+       */
+      holding?: string | null;
+      voting_power_percent?: string | null;
+    }> | null;
+    capital_structure?: Array<{
+      class_of_security?: string | null;
+      authorized?: string | null;
+      outstanding?: string | null;
+      voting_rights?: string | null;
+      other_rights?: string | null;
+    }> | null;
+    /**
+     * Exempt offerings in the prior three years, as disclosed.
+     */
+    prior_offerings?: Array<{
+      date?: string | null;
+      exemption?: string | null;
+      security_type?: string | null;
+      amount_sold?: string | null;
+      use_of_proceeds?: string | null;
+      /**
+       * The Wefunder offering (`ofr_...`) when the prior offering ran here.
+       */
+      offering_id?: string | null;
+    }> | null;
+    outstanding_notes?: Array<{
+      amount?: string | null;
+      outstanding_principal?: string | null;
+      valuation_cap?: string | null;
+      uncapped?: boolean;
+      interest_rate_percent?: string | null;
+      discount_percent?: string | null;
+      maturity_date?: string | null;
+      description?: string | null;
+    }> | null;
+    outstanding_debts?: {
+      /**
+       * A company-specific note the site shows instead of the table, when set.
+       */
+      note?: string | null;
+      items?: Array<{
+        original_amount?: string | null;
+        outstanding_principal?: string | null;
+        current_with_payments?: boolean | null;
+        maturity_date?: string | null;
+        description?: string | null;
+      }>;
+    } | null;
+    related_parties?: {
+      description?: string | null;
+      parties?: Array<{
+        name?: string | null;
+        relationship?: string | null;
+        amount?: string | null;
+        date?: string | null;
+        outstanding_principal?: string | null;
+        description?: string | null;
+      }>;
+    } | null;
+  };
+};
+
+/**
+ * One fiscal year's figures from the Form C, USD decimal strings (null where not reported).
+ */
+export type FiscalYearFinancials = {
+  total_assets?: string | null;
+  cash_and_equivalents?: string | null;
+  accounts_receivable?: string | null;
+  short_term_debt?: string | null;
+  long_term_debt?: string | null;
+  revenue?: string | null;
+  cost_of_goods_sold?: string | null;
+  taxes_paid?: string | null;
+  net_income?: string | null;
+};
+
+export type DisclosureDocument = {
+  name?: string | null;
+  url?: string;
+};
+
+export type DisclosurePerson = {
+  name?: string | null;
+  titles?: string | null;
+  /**
+   * Year joined.
+   */
+  since?: number | null;
+  director?: boolean;
+  officer?: boolean;
+};
+
+/**
+ * One post from a company's Posts tab. Plain text, never HTML.
+ */
+export type CompanyUpdate = {
+  /**
+   * The post's public id (its share token); pass as `update_id` for the full text.
+   */
+  id?: string | null;
+  type?: "company_update";
+  attributes?: {
+    /**
+     * `update`, `note`, `spotlight`, `bounty`, ...
+     */
+    kind?: string;
+    title?: string | null;
+    /**
+     * The first ~280 characters, plain text.
+     */
+    excerpt?: string | null;
+    /**
+     * Full plain text. Present on the single-post endpoint; null in lists.
+     */
+    content?: string | null;
+    published_at?: string | null;
+    pinned?: boolean;
+    /**
+     * Who the site shows the post to. You only ever receive posts you may see.
+     */
+    visibility?:
+      "public" | "investors" | "community" | "founders" | "private" | null;
+    author?: {
+      name?: string | null;
+    } | null;
+    comments_count?: number;
+    likes_count?: number;
+    /**
+     * The post's page on wefunder.com.
+     */
+    url?: string | null;
+  };
+};
+
+export type CompanyUpdateListEnvelope = {
+  data?: Array<CompanyUpdate>;
+  meta?: {
+    /**
+     * The company's id (`co_...`).
+     */
+    company?: string;
+    has_more?: boolean;
+    page_count?: number;
+    next_cursor?: number | null;
+  };
+};
+
+export type CompanyUpdateEnvelope = {
+  data?: CompanyUpdate;
+};
+
+export type CompanyPitchEnvelope = {
+  data?: CompanyPitch;
+};
+
+/**
+ * The company page's pitch (the Overview tab's story) as ordered blocks, plus the round's perk tiers.
+ */
+export type CompanyPitch = {
+  /**
+   * The company's id (`co_...`).
+   */
+  id?: string;
+  type?: "company_pitch";
+  attributes?: {
+    /**
+     * The round the page shows this viewer (`ofr_...`), whose perks these are; null when the viewer may see none.
+     */
+    offering_id?: string | null;
+    /**
+     * The heading the page puts over the story (the founder's own, or the default).
+     */
+    title?: string;
+    /**
+     * The company's page on wefunder.com.
+     */
+    url?: string | null;
+    /**
+     * `company`: the founder wrote the story. `wefunder`: a Wefunder-prepared deal memo the company did not participate in.
+     */
+    authored_by?: "company" | "wefunder";
+    /**
+     * The page's notice on a Wefunder-prepared deal memo; null when the company authored the story.
+     */
+    disclaimer?: string | null;
+    /**
+     * The story in document order, as the page renders it. Empty `blocks` when the company has no story.
+     */
+    story?: {
+      blocks?: Array<PitchBlock>;
+      image_count?: number;
+      video_count?: number;
+      /**
+       * Images the page renders from an inline `data:` URL, which have no fetchable URL and are left out of `blocks`. Almost always 0.
+       */
+      inline_images_omitted?: number;
+      /**
+       * Characters of text across paragraph, heading, list, and footnote blocks.
+       */
+      character_count?: number;
+    };
+    /**
+     * The perk tiers the page shows; null when the viewer may see no round.
+     */
+    perks?: {
+      /**
+       * The round these perks belong to (`ofr_...`) when it is the round the page shows. Null when the sidebar reads a round the viewer cannot resolve yet (a Testing-the-Waters page shows the perks of the round it converts into, which is still being set up).
+       */
+      offering_id?: string | null;
+      /**
+       * ISO 4217 code the tier amounts are denominated in, e.g. `USD` or `EUR`.
+       */
+      currency?: string;
+      /**
+       * Heuristic. True when the tiers are a placeholder ("See investor overview page", or one identical short sentence on every tier) and the real perks are in the story, usually as images.
+       */
+      described_in_pitch?: boolean;
+      tiers?: Array<PerkTier>;
+    } | null;
+  };
+};
+
+/**
+ * One block of the story. `type` says which of the other keys are present.
+ */
+export type PitchBlock = {
+  type?: "heading" | "paragraph" | "list" | "image" | "video" | "footnote";
+  /**
+   * Heading level 1–6 (`heading` only).
+   */
+  level?: number;
+  /**
+   * Plain text (`heading`, `paragraph`, and `footnote`). A footnote reference in running text appears as `[n]`.
+   */
+  text?: string;
+  /**
+   * The footnote's number, matching its `[n]` reference (`footnote` only).
+   */
+  number?: number;
+  /**
+   * Numbered list (`list` only).
+   */
+  ordered?: boolean;
+  /**
+   * First number of an ordered list that resumes after an image or nested list split it (`list` only, when above 1).
+   */
+  start?: number;
+  /**
+   * Plain-text list items (`list` only).
+   */
+  items?: Array<string>;
+  /**
+   * The hyperlinks in this block's text, in order, as the page links them (`paragraph`, `heading`, `list`; absent when there are none). Anchor text stays inline in `text` / `items`.
+   */
+  links?: Array<{
+    /**
+     * The anchor text.
+     */
+    text?: string | null;
+    /**
+     * Absolute URL; site-relative hrefs are resolved against wefunder.com.
+     */
+    url?: string;
+  }>;
+  /**
+   * Absolute URL of the image or video (`image` and `video`).
+   */
+  url?: string;
+  /**
+   * Where the page links this image or video to, when it is wrapped in a hyperlink (`image` and `video`; absent otherwise).
+   */
+  link?: string;
+  /**
+   * The image's alt text; almost always null on Wefunder pitches (`image` only).
+   */
+  alt?: string | null;
+  /**
+   * The image file's name, often the only hint at its content, e.g. `Tier_3_Final.png` (`image` only).
+   */
+  filename?: string | null;
+  /**
+   * `youtube`, `vimeo`, `wistia`, `loom`, `upload` (hosted by Wefunder), or `other` (`video` only).
+   */
+  provider?: string;
+};
+
+export type PerkTier = {
+  /**
+   * Investment that unlocks the tier, as a decimal string in `perks.currency`.
+   */
+  qualifying_amount?: string;
+  /**
+   * Plain text, the founder's own words.
+   */
+  description?: string | null;
+};
+
+export type CompanyQuestionPerson = {
+  /**
+   * The person's Wefunder id (`usr_...`).
+   */
+  id?: string | null;
+  name?: string | null;
+  /**
+   * The label the tab shows: `founder`, `employee`, `wefunder team`, or the asker's own disclosure (e.g. `investor`).
+   */
+  role?: string | null;
+  /**
+   * True when the person is on the company's team (a founder or employee).
+   */
+  team?: boolean;
+};
+
+/**
+ * One question from a company's Ask tab with its answers. Plain text.
+ */
+export type CompanyQuestion = {
+  /**
+   * The question's id (`cmt_...`).
+   */
+  id?: string;
+  type?: "company_question";
+  attributes?: {
+    question?: string | null;
+    asked_at?: string | null;
+    asked_by?: CompanyQuestionPerson;
+    likes_count?: number;
+    /**
+     * The team highlighted this question on the tab.
+     */
+    highlighted?: boolean;
+    answered_by_team?: boolean;
+    /**
+     * In a search (`q`), whether the question's own text or one of its answers matched. Null otherwise.
+     */
+    match?: "question" | "answer";
+    answers?: Array<{
+      /**
+       * The answer's id (`cmt_...`).
+       */
+      id?: string;
+      answer?: string | null;
+      answered_at?: string | null;
+      answered_by?: CompanyQuestionPerson;
+      likes_count?: number;
+    }>;
+    /**
+     * The company's Ask tab on wefunder.com.
+     */
+    url?: string | null;
+  };
+};
+
+export type CompanyQuestionListEnvelope = {
+  data?: Array<CompanyQuestion>;
+  meta?: {
+    company?: string;
+    /**
+     * The sort applied; `search` when `q` was given (results are ranked by match).
+     */
+    sort?: string;
+    q?: string | null;
+    unanswered_by_team?: boolean;
+    past_raises?: boolean;
+    /**
+     * The current raise's opening date when `past_raises` is false; null otherwise.
+     */
+    questions_since?: string | null;
+    /**
+     * Questions matching, across all pages.
+     */
+    total?: number;
+    has_more?: boolean;
+    page_count?: number;
+    next_cursor?: number | null;
+  };
+};
+
+export type CompanyEnvelope = {
+  data?: Company;
+};
+
+/**
+ * The company page as structured data. Monetary fields are USD decimal strings.
+ */
+export type Company = {
+  /**
+   * The company's id (`co_...`).
+   */
+  id?: string;
+  type?: string;
+  attributes?: {
+    name?: string;
+    tagline?: string | null;
+    /**
+     * The company's Wefunder page.
+     */
+    url?: string | null;
+    logo_url?: string | null;
+    card_image_url?: string | null;
+    location?: {
+      city?: string | null;
+      state?: string | null;
+      country?: string | null;
+    };
+    /**
+     * True when the round the page shows this viewer is live (accepting investments or reservations). False for a funded company, or one with no round the viewer may see.
+     */
+    raising?: boolean;
+    /**
+     * The live round the page shows, or null when `raising` is false. A funded company still has its history in `wefunder_rounds` and the page's ticker in `totals`.
+     */
+    current_raise?: CurrentRaise | null;
+    /**
+     * The prior rounds the company page's ticker folds in (its own accounting; see `totals.profile_*`). Not the company's full Wefunder history — that is `wefunder_rounds`.
+     */
+    past_rounds?: Array<PastRound>;
+    /**
+     * Every round this company has run on Wefunder that the viewer may see, live and closed, newest first, each with its own metric. Independent of what the page's ticker chooses to include.
+     */
+    wefunder_rounds?: Array<WefunderRound>;
+    totals?: CompanyTotals;
+  };
+};
+
+/**
+ * The round the page shows this viewer, with its linked legs combined.
+ */
+export type CurrentRaise = {
+  /**
+   * The displayed offering (`ofr_...`); fetch it with `/offerings/{id}`.
+   */
+  offering_id?: string;
+  /**
+   * Every live leg combined into `amount_raised` that the viewer may see (e.g. a Reg CF round and its Reg D round).
+   */
+  offering_ids?: Array<string>;
+  /**
+   * True when the current raise collects non-binding reservations, not investments.
+   */
+  testing_the_waters?: boolean;
+  /**
+   * Raised across the combined legs, on Wefunder, USD decimal string.
+   */
+  amount_raised?: string | null;
+  funding_target?: string | null;
+  investor_count?: number | null;
+  oversubscribed?: boolean;
+  closes_at?: string | null;
+};
+
+export type PastRound = {
+  /**
+   * The Wefunder offering (`ofr_...`) when `source` is `wefunder`; null for a reported round.
+   */
+  offering_id?: string | null;
+  /**
+   * `wefunder`: observed on this platform. `reported`: disclosed by the founder as raised off-platform (verified per the page's rules, but not observed here).
+   */
+  source?: "wefunder" | "reported";
+  exemption?: Exemption;
+  amount_raised?: string | null;
+  investor_count?: number | null;
+  opened_at?: string | null;
+  closed_at?: string | null;
+};
+
+export type WefunderRound = {
+  /**
+   * The round's offering id (`ofr_...`).
+   */
+  offering_id?: string;
+  /**
+   * True for the displayed round and any other live round.
+   */
+  current?: boolean;
+  status?: "open" | "closed";
+  exemption?: Exemption | null;
+  security?: Security | null;
+  /**
+   * This round's own soft-confirmed amount, USD decimal string.
+   */
+  amount_raised?: string | null;
+  investor_count?: number | null;
+  opened_at?: string | null;
+  closed_at?: string | null;
+};
+
+export type CompanyTotals = {
+  /**
+   * Sum of `wefunder_rounds[].amount_raised` — everything this company has raised on Wefunder that the viewer may see. The lifetime figure.
+   */
+  raised_on_wefunder_all_time?: string | null;
+  /**
+   * The number on the company page's ticker bar — the current raise plus the past rounds the page folds in (which may include founder-reported off-platform rounds and exclude older Wefunder rounds).
+   */
+  profile_total_raised?: string | null;
+  /**
+   * The founder-reported off-platform portion of `profile_total_raised`.
+   */
+  profile_reported_off_platform?: string | null;
+  /**
+   * Whether the page's ticker currently folds past rounds into its total. Null when the viewer may see no round (no ticker to read).
+   */
+  profile_includes_past_rounds?: boolean | null;
+};
+
+/**
  * The offering's SEC exemption, in market vocabulary.
  */
 export type Exemption = {
-  family?: "reg_cf" | "reg_d" | "reg_a" | "reg_s" | "ecsp";
+  /**
+   * `other` appears only on a company's past rounds, for a reported round under an
+   * exemption outside this list (e.g. Section 4(a)(2)).
+   * `reg_cf` — Regulation Crowdfunding: open to all investors, with per-investor annual
+   * limits set by the SEC; amounts and investor counts are public. `reg_d` — Regulation D
+   * private placement: `506c` is open to verified accredited investors only and may be
+   * advertised; `506b` is by invitation and never publicly listed. `reg_a`, `reg_s` and
+   * `ecsp` exist in the data but are not filterable on `/explore`.
+   *
+   */
+  family?: "reg_cf" | "reg_d" | "reg_a" | "reg_s" | "ecsp" | "other";
   /**
    * Sub-type/flavor — `506b` or `506c` for the `reg_d` family, otherwise null.
    */
@@ -513,6 +1782,179 @@ export type Exemption = {
    * Human-readable label in normal market language.
    */
   label?: string;
+};
+
+/**
+ * A curated company tag — a machine value plus the label the site shows.
+ */
+export type TagRef = {
+  type: string;
+  label: string;
+};
+
+/**
+ * The kind of security without its terms — the `type` / `label` pair shared by every
+ * `Security` variant. Used where the terms live elsewhere (portfolio positions) or are
+ * not final (a Testing-the-Waters round's `intended_security`).
+ *
+ */
+export type SecuritySummary = {
+  type:
+    | "safe"
+    | "equity"
+    | "convertible_note"
+    | "revenue_share"
+    | "debt"
+    | "fund"
+    | "other";
+  label: string;
+};
+
+/**
+ * What an offering issues. A discriminated union on `type`: every variant carries the same
+ * `type` / `label` pair and a `terms` object whose fields are fixed per type. Money and rates
+ * are USD decimal strings. Internal instrument codes never appear here.
+ *
+ */
+export type Security =
+  | ({
+      type: "safe";
+    } & SafeSecurity)
+  | ({
+      type: "equity";
+    } & EquitySecurity)
+  | ({
+      type: "convertible_note";
+    } & ConvertibleNoteSecurity)
+  | ({
+      type: "revenue_share";
+    } & RevenueShareSecurity)
+  | ({
+      type: "debt";
+    } & DebtSecurity)
+  | ({
+      type: "fund";
+    } & FundSecurity)
+  | ({
+      type: "other";
+    } & OtherSecurity);
+
+export type SafeSecurity = {
+  type?: "safe";
+  label?: string;
+  terms?: {
+    /**
+     * Post-money valuation cap in USD, decimal string; null for an uncapped SAFE (never "0").
+     */
+    valuation_cap?: string | null;
+    /**
+     * True when the SAFE has no valuation cap, as the deal page labels it. Always the inverse of `valuation_cap` being present.
+     */
+    uncapped?: boolean;
+    /**
+     * Discount to the next priced round, as a percentage; null when none.
+     */
+    discount_percent?: string | null;
+    /**
+     * Whether the SAFE carries an MFN clause.
+     */
+    most_favored_nation?: boolean;
+    /**
+     * Whether investors receive pro-rata rights in the next round.
+     */
+    pro_rata?: boolean;
+  };
+};
+
+export type EquitySecurity = {
+  type?: "equity";
+  label?: string;
+  terms?: {
+    /**
+     * Price per share in USD, decimal string.
+     */
+    share_price?: string | null;
+    /**
+     * Pre-money valuation in USD, decimal string.
+     */
+    pre_money_valuation?: string | null;
+    share_class?: "preferred" | "common" | null;
+  };
+};
+
+export type ConvertibleNoteSecurity = {
+  type?: "convertible_note";
+  label?: string;
+  terms?: {
+    /**
+     * Valuation cap in USD, decimal string; null for an uncapped note (never "0").
+     */
+    valuation_cap?: string | null;
+    /**
+     * True when the note has no valuation cap, as the deal page labels it.
+     */
+    uncapped?: boolean;
+    discount_percent?: string | null;
+    /**
+     * Annual interest, as a percentage.
+     */
+    interest_rate_percent?: string | null;
+    maturity_months?: number | null;
+    most_favored_nation?: boolean;
+  };
+};
+
+export type RevenueShareSecurity = {
+  type?: "revenue_share";
+  label?: string;
+  terms?: {
+    /**
+     * Share of revenue paid to investors each period, as a percentage.
+     */
+    revenue_share_percent?: string | null;
+    /**
+     * Payments stop once investors have received this multiple of their investment.
+     */
+    repayment_cap_multiple?: string | null;
+    payment_period?: string | null;
+    revenue_basis?: "gross" | "net" | null;
+    secured?: boolean;
+    guarantor?: string | null;
+  };
+};
+
+export type DebtSecurity = {
+  type?: "debt";
+  label?: string;
+  terms?: {
+    interest_rate_percent?: string | null;
+    maturity_months?: number | null;
+    first_payment_date?: string | null;
+  };
+};
+
+/**
+ * An interest in a fund vehicle; the fund's own terms are on its profile, not per-offering.
+ */
+export type FundSecurity = {
+  type?: "fund";
+  label?: string;
+  terms?: {
+    [key: string]: unknown;
+  };
+};
+
+/**
+ * A security Wefunder does not model in detail; the founder's own name and description for it.
+ */
+export type OtherSecurity = {
+  type?: "other";
+  label?: string;
+  terms?: {
+    name?: string | null;
+    description?: string | null;
+    more_info_url?: string | null;
+  };
 };
 
 export type User = {
@@ -532,30 +1974,21 @@ export type User = {
   };
 };
 
-export type Investment = {
-  id?: number;
-  type?: string;
-  attributes?: {
-    amount?: number;
-    state?: string;
-    confirmed_at?: string | null;
-    created_at?: string;
-    updated_at?: string;
-    fundraise_id?: number;
-    campaign?: {
-      id?: number;
-      company_name?: string;
-      company_id?: number;
-    } | null;
-  };
-};
-
 export type Campaign = {
   id?: number;
   type?: string;
   attributes?: {
     state?: string;
+    /**
+     * Internal integer id. Deprecated — use `company` (`co_...`) instead.
+     *
+     * @deprecated
+     */
     company_id?: number;
+    /**
+     * The company's id (`co_...`).
+     */
+    company?: string | null;
     company_name?: string;
     company_url?: string | null;
     created_at?: string;
@@ -569,7 +2002,13 @@ export type Campaign = {
 export type PaginationMeta = {
   count?: number;
   has_more?: boolean;
-  next_cursor?: number | null;
+  /**
+   * Opaque cursor — pass back as `cursor` for the next page. An integer id for
+   * id-paginated lists, an ISO 8601 timestamp for timestamp-paginated ones
+   * (`/activity`). Absent or null on the last page.
+   *
+   */
+  next_cursor?: number | string | null;
 };
 
 export type Error = {
@@ -904,7 +2343,26 @@ export type Syndicate = {
      * Number of linked deals (fundraises) in this syndicate
      */
     deal_count?: number;
+    /**
+     * Internal integer id. Deprecated — use `primary_fund_company` (`co_...`) instead.
+     *
+     * @deprecated
+     */
+    primary_fund_company_id?: number | null;
+    /**
+     * The primary fund company's id (`co_...`), when the syndicate has one.
+     */
+    primary_fund_company?: string | null;
+    /**
+     * Internal integer id. Deprecated — use `created_by` (`usr_...`) instead.
+     *
+     * @deprecated
+     */
     created_by_user_id?: number;
+    /**
+     * The creating user's id (`usr_...`).
+     */
+    created_by?: string | null;
     created_at?: string;
     updated_at?: string;
   };
@@ -919,13 +2377,22 @@ export type SyndicateDetail = Syndicate;
  * JSON:API resource representing a syndicate member (ClubRole)
  */
 export type SyndicateMember = {
-  id?: number;
+  /**
+   * The member's id (`mem_...`); pass as member_id to the member endpoints.
+   */
+  id?: string;
   type?: string;
   attributes?: {
     /**
-     * User ID (null for invitees who haven't signed up)
+     * Internal integer id. Deprecated — use `user` (`usr_...`) instead.
+     *
+     * @deprecated
      */
     user_id?: number | null;
+    /**
+     * The member's user id (`usr_...`); null for invitees who haven't signed up.
+     */
+    user?: string | null;
     user_name?: string | null;
     /**
      * **Moderator-only.** User email (or invite_email for pending invitees).
@@ -957,7 +2424,7 @@ export type SyndicateMember = {
     /**
      * Override carry percentage for this member
      */
-    carry_percentage_override?: string | null;
+    carry_percentage_override?: number | null;
     /**
      * User profile photo URL (null for invitees without a user account)
      */
@@ -1031,19 +2498,28 @@ export type SyndicateMember = {
  * JSON:API resource representing a syndicate deal (Fundraise)
  */
 export type SyndicateDeal = {
-  id?: number;
+  /**
+   * The deal's offering id (`ofr_...`). Same id `get_offering` / `explore_offerings` use.
+   */
+  id?: string;
   type?: string;
   attributes?: {
     name?: string;
     /**
-     * Fundraise state
+     * Where the round is in its life (same values as an offering's `status`).
      */
-    state?: string;
+    status?: "upcoming" | "open" | "closed" | "canceled";
     company_name?: string;
     /**
-     * Company ID
+     * Internal integer id. Deprecated — use `company` (`co_...`) instead.
+     *
+     * @deprecated
      */
     company_id?: number;
+    /**
+     * The company's id (`co_...`).
+     */
+    company?: string | null;
     /**
      * Company slug/URL path
      */
@@ -1065,13 +2541,13 @@ export type SyndicateDeal = {
      */
     funding_target?: string | null;
     /**
-     * Offering type (e.g. '506(c)', '4(a)(6)')
+     * The SEC exemption the deal is offered under, in market vocabulary.
      */
-    offering_type?: string | null;
+    exemption?: Exemption | null;
     /**
-     * Deal structure (e.g. 'equity', 'safe', 'convertible_note')
+     * What the deal issues, as a discriminated union on `type` (see `Security`).
      */
-    structure?: string | null;
+    security?: Security | null;
     /**
      * Minimum investment amount in cents, as a string
      */
@@ -1122,12 +2598,11 @@ export type PortfolioCompanyRef = {
  */
 export type PortfolioSecurity = {
   /**
-   * Security type (`safe`, `equity`, `convertible_note`, `revenue_share`,
-   * `simple_loan`, `priced_round`, `fund`, `custom`). May be null on legacy
-   * offerings — fall back to the position-level `structure`.
+   * What this tier issues, as `{ type, label }` (the terms are in `terms` below).
+   * May be null on legacy offerings — fall back to the position-level `security`.
    *
    */
-  structure?: string | null;
+  security?: SecuritySummary | null;
   early_bird?: boolean;
   /**
    * The offering's issue terms. Fields are null when the term does not apply to the security type.
@@ -1202,9 +2677,9 @@ export type PortfolioPosition = {
      */
     asset_type?: "company" | "fund";
     /**
-     * The fundraise's security structure (`safe`, `equity`, `fund`, ...)
+     * What the round issued, as `{ type, label }`. Null when the round has no security recorded.
      */
-    structure?: string;
+    security?: SecuritySummary | null;
     /**
      * `sold` means the stake was transferred away (secondary sale).
      */
@@ -1326,15 +2801,21 @@ export type SyndicatePortfolioSummaryEnvelope = {
  */
 export type DealInvestor = {
   /**
-   * Investment ID
+   * The investor's id (`usr_...`) — one row per investor, aggregated across their investments in the deal.
    */
-  id?: number;
+  id?: string;
   type?: string;
   attributes?: {
     /**
-     * Investor's user ID
+     * Internal integer id. Deprecated — use `user` (`usr_...`) instead.
+     *
+     * @deprecated
      */
     user_id?: number;
+    /**
+     * The investor's id (`usr_...`).
+     */
+    user?: string;
     user_name?: string | null;
     /**
      * **Moderator-only.** Investor's email address.
@@ -1351,9 +2832,9 @@ export type DealInvestor = {
      */
     amount?: string;
     /**
-     * Investment state
+     * The investor's most advanced commitment in this deal — `confirmed` is final, `pending` is committed but not yet final.
      */
-    state?: string;
+    status?: "pending" | "confirmed";
     /**
      * ISO 8601 timestamp when the investment was created
      */
@@ -1368,15 +2849,21 @@ export type DealInvestor = {
  */
 export type MemberInvestment = {
   /**
-   * Investment ID
+   * Investment id (`inv_...`).
    */
-  id?: number;
+  id?: string;
   type?: string;
   attributes?: {
     /**
-     * Deal (fundraise) ID
+     * Internal integer id. Deprecated — use `offering` (`ofr_...`) instead.
+     *
+     * @deprecated
      */
     fundraise_id?: number;
+    /**
+     * The deal's id (`ofr_...`), accepted by the deal endpoints.
+     */
+    offering?: string | null;
     /**
      * Name of the company the deal is for
      */
@@ -1386,9 +2873,9 @@ export type MemberInvestment = {
      */
     amount?: string;
     /**
-     * Investment state
+     * `confirmed` is final; `pending` is committed but not yet final.
      */
-    state?: string;
+    status?: "pending" | "confirmed";
     /**
      * ISO 8601 timestamp when the investment was created
      */
@@ -1441,6 +2928,9 @@ export type SyndicateStatistics = {
  * JSON:API resource representing an intent (proposed dangerous action)
  */
 export type Intent = {
+  /**
+   * The intent's id (`int_...`). The `review_url` embeds the separate web (UUID) id.
+   */
   id?: string;
   type?: string;
   attributes?: {
@@ -1455,9 +2945,12 @@ export type Intent = {
       | "failed";
     resource_type?: string;
     /**
-     * For Club resources, the syndicate's id (`syn_...`).
+     * For Club resources, the syndicate's id (`syn_...`). For every other
+     * `resource_type` (contract change plans, tranches, applications, ...) the
+     * resource's integer id, since those models have no external id yet.
+     *
      */
-    resource_id?: string;
+    resource_id?: string | number | null;
     impact_summary?: string;
     /**
      * URL where a human can review and approve/reject this intent
@@ -1486,7 +2979,10 @@ export type Intent = {
  * JSON:API resource representing an audit event
  */
 export type AuditEvent = {
-  id?: number;
+  /**
+   * Event id (UUID).
+   */
+  id?: string;
   type?: string;
   attributes?: {
     occurred_at?: string;
@@ -1494,13 +2990,16 @@ export type AuditEvent = {
      * Type of actor (e.g. user, agent, system)
      */
     actor_type?: string;
-    actor_name?: string;
+    actor_name?: string | null;
     action?: string;
     resource_type?: string;
     /**
-     * For Club resources, the syndicate's id (`syn_...`).
+     * For Club resources, the syndicate's id (`syn_...`). For every other
+     * `resource_type` (contract change plans, tranches, applications, ...) the
+     * resource's integer id, since those models have no external id yet.
+     *
      */
-    resource_id?: string;
+    resource_id?: string | number | null;
     resource_label?: string | null;
     /**
      * Previous values of changed fields
@@ -1521,9 +3020,15 @@ export type AuditEvent = {
     status?: "success" | "failure" | "denied";
     error_message?: string | null;
     /**
-     * Associated intent ID if this event was triggered by an intent
+     * Legacy UUID of the associated intent. Deprecated — use `intent` (`int_...`) instead.
+     *
+     * @deprecated
      */
     intent_id?: string | null;
+    /**
+     * The associated intent's id (`int_...`) if this event was triggered by an intent.
+     */
+    intent?: string | null;
     created_at?: string;
   };
 };
@@ -2061,14 +3566,14 @@ export type CampaignId = number;
 export type SyndicateId = string;
 
 /**
- * The member ID
+ * The member's id (`mem_...`), as returned by the members list (`data[].id`). Integer ids are internal and not accepted.
  */
 export type MemberId = string;
 
 /**
- * The deal (fundraise) ID
+ * The deal's id (`ofr_...`), as returned by the deals list. Integer ids are internal and not accepted.
  */
-export type FundraiseId = number;
+export type FundraiseId = string;
 
 /**
  * Filter results to attributions on or after this date. Format: YYYY-MM-DD.
@@ -2101,6 +3606,11 @@ export type UtmCampaign = string;
  *
  */
 export type Cursor = number;
+
+/**
+ * The webhook endpoint's id (whe_...).
+ */
+export type WebhookExternalId = string;
 
 /**
  * The webhook subscription ID
@@ -2161,11 +3671,124 @@ export type ListOfferingsData = {
      *
      */
     sort?: "most_raised" | "closing_soon" | "newest" | "most_investors";
+    /**
+     * Only offerings under this SEC exemption family. Reg CF and Reg D are the supported public filters.
+     */
+    exemption?: "reg_cf" | "reg_d";
+    /**
+     * Only offerings issuing this kind of security — the `security.type` value on results.
+     */
+    security?:
+      | "safe"
+      | "equity"
+      | "convertible_note"
+      | "revenue_share"
+      | "debt"
+      | "fund"
+      | "other";
+    /**
+     * `false` — only live rounds accepting investments; `true` — only Testing-the-Waters rounds collecting non-binding reservations.
+     */
+    testing_the_waters?: boolean;
+    /**
+     * Only offerings whose minimum investment is at most this amount (USD).
+     */
+    max_min_investment?: number;
+    /**
+     * Only offerings whose funding close date is on or before this date (ISO 8601). Offerings with no close date are excluded.
+     */
+    closing_before?: string;
+    /**
+     * Only offerings that have raised at least this amount so far (USD).
+     */
+    min_amount_raised?: number;
+    /**
+     * Only companies tagged with any of these industries — the curated tags the wefunder.com
+     * explore page filters by (see each offering's `industries`). One value or a comma-separated
+     * list; unknown values are a 400 listing the vocabulary. Objective facets, not a ranking.
+     *
+     */
+    industry?: Array<
+      | "ar_and_vr"
+      | "agriculture_and_agtech"
+      | "artificial_intelligence"
+      | "biotech"
+      | "blockchain_and_web3"
+      | "edtech"
+      | "energy"
+      | "fintech_and_finance"
+      | "food_tech"
+      | "games"
+      | "health_and_fitness"
+      | "healthcare"
+      | "manufacturing"
+      | "mobile_apps"
+      | "robotics"
+      | "science_and_r_and_d"
+      | "transportation"
+      | "travel_and_tourism"
+      | "bars_and_clubs"
+      | "brewery"
+      | "cafe_and_food_truck"
+      | "events_and_festivals"
+      | "education"
+      | "distillery_and_vineyards"
+      | "fashion"
+      | "film"
+      | "media"
+      | "music"
+      | "restaurant"
+      | "sports"
+      | "real_estate"
+      | "pets"
+      | "recreation"
+      | "infrastructure_and_construction"
+      | "childcare"
+      | "sustainability"
+      | "sports_tech"
+      | "home_tech"
+      | "devtools"
+      | "clean_tech"
+      | "beauty"
+      | "entertainment"
+      | "technology"
+      | "brick_and_mortar"
+      | "food_and_beverage"
+      | "climate_change"
+      | "alcohol_and_vice"
+      | "consumer_goods"
+      | "hardware"
+      | "moonshots"
+    >;
+    /**
+     * Only companies with any of these business models (see each offering's `business_models`). One value or a comma-separated list.
+     */
+    business_model?: Array<
+      | "b2b"
+      | "b2c"
+      | "subscription"
+      | "saas"
+      | "service"
+      | "marketplace"
+      | "ecommerce"
+      | "retail"
+    >;
+    /**
+     * **Logged-in view only** (`read:explore` with a user). `true` — only companies the
+     * authorizing user follows on wefunder.com (their watchlist); `false` — only companies
+     * they do not follow. A 400 on the public view, which has no user to filter by.
+     *
+     */
+    followed?: boolean;
   };
   url: "/explore";
 };
 
 export type ListOfferingsErrors = {
+  /**
+   * A filter value is out of vocabulary or malformed; `error.message` names the accepted values.
+   */
+  400: unknown;
   /**
    * Authentication required or token is invalid/expired. This error occurs when:
    * - No Authorization header is provided
@@ -2253,6 +3876,430 @@ export type GetOfferingResponses = {
 export type GetOfferingResponse =
   GetOfferingResponses[keyof GetOfferingResponses];
 
+export type GetCompanyDisclosuresData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: {
+    /**
+     * Only these sections (`offering_id` and `filing` are always included). Omit for the whole
+     * tab; a disclosure-heavy company runs to ~100 KB. Unknown names are a 400 listing the vocabulary.
+     *
+     */
+    sections?: Array<
+      | "business"
+      | "financial_statements"
+      | "ratios"
+      | "current_position"
+      | "financial_condition"
+      | "financial_statement_documents"
+      | "investment_documents"
+      | "risks"
+      | "use_of_funds"
+      | "directors"
+      | "officers"
+      | "voting_power"
+      | "capital_structure"
+      | "prior_offerings"
+      | "outstanding_notes"
+      | "outstanding_debts"
+      | "related_parties"
+    >;
+  };
+  url: "/companies/{id}/disclosures";
+};
+
+export type GetCompanyDisclosuresErrors = {
+  /**
+   * `sections` names a section that does not exist.
+   */
+  400: unknown;
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * Unknown or hidden company (`error.type` = `not_found`), or no public Form C disclosures (`error.type` = `no_disclosures`).
+   */
+  404: unknown;
+  /**
+   * Too many requests in a short time period. The API enforces rate limits to ensure
+   * fair usage and system stability. When you exceed the limit, you'll receive this
+   * error along with headers indicating when you can retry.
+   *
+   * Check the `X-RateLimit-Reset` header to know when your limit will reset.
+   * Consider implementing exponential backoff in your application.
+   *
+   */
+  429: Error;
+};
+
+export type GetCompanyDisclosuresError =
+  GetCompanyDisclosuresErrors[keyof GetCompanyDisclosuresErrors];
+
+export type GetCompanyDisclosuresResponses = {
+  /**
+   * Successful response
+   */
+  200: CompanyDisclosuresEnvelope;
+};
+
+export type GetCompanyDisclosuresResponse =
+  GetCompanyDisclosuresResponses[keyof GetCompanyDisclosuresResponses];
+
+export type GetCompanyPitchData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: {
+    /**
+     * Only these sections (`offering_id`, `title`, `url`, `authored_by`, and `disclaimer` are
+     * always included). Omit for the whole pitch. Unknown names are a 400 listing the vocabulary.
+     *
+     */
+    sections?: Array<"story" | "perks">;
+  };
+  url: "/companies/{id}/pitch";
+};
+
+export type GetCompanyPitchErrors = {
+  /**
+   * `sections` names a section that does not exist.
+   */
+  400: unknown;
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * Unknown or hidden company.
+   */
+  404: unknown;
+  /**
+   * Too many requests in a short time period. The API enforces rate limits to ensure
+   * fair usage and system stability. When you exceed the limit, you'll receive this
+   * error along with headers indicating when you can retry.
+   *
+   * Check the `X-RateLimit-Reset` header to know when your limit will reset.
+   * Consider implementing exponential backoff in your application.
+   *
+   */
+  429: Error;
+};
+
+export type GetCompanyPitchError =
+  GetCompanyPitchErrors[keyof GetCompanyPitchErrors];
+
+export type GetCompanyPitchResponses = {
+  /**
+   * Successful response
+   */
+  200: CompanyPitchEnvelope;
+};
+
+export type GetCompanyPitchResponse =
+  GetCompanyPitchResponses[keyof GetCompanyPitchResponses];
+
+export type ListCompanyUpdatesData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: {
+    cursor?: string;
+    per_page?: number;
+  };
+  url: "/companies/{id}/updates";
+};
+
+export type ListCompanyUpdatesErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * Unknown company, or one the site does not show this viewer.
+   */
+  404: unknown;
+  /**
+   * Too many requests in a short time period. The API enforces rate limits to ensure
+   * fair usage and system stability. When you exceed the limit, you'll receive this
+   * error along with headers indicating when you can retry.
+   *
+   * Check the `X-RateLimit-Reset` header to know when your limit will reset.
+   * Consider implementing exponential backoff in your application.
+   *
+   */
+  429: Error;
+};
+
+export type ListCompanyUpdatesError =
+  ListCompanyUpdatesErrors[keyof ListCompanyUpdatesErrors];
+
+export type ListCompanyUpdatesResponses = {
+  /**
+   * Successful response
+   */
+  200: CompanyUpdateListEnvelope;
+};
+
+export type ListCompanyUpdatesResponse =
+  ListCompanyUpdatesResponses[keyof ListCompanyUpdatesResponses];
+
+export type GetCompanyUpdateData = {
+  body?: never;
+  path: {
+    id: string;
+    update_id: string;
+  };
+  query?: never;
+  url: "/companies/{id}/updates/{update_id}";
+};
+
+export type GetCompanyUpdateErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * Unknown company or post, or one the site does not show this viewer.
+   */
+  404: unknown;
+  /**
+   * Too many requests in a short time period. The API enforces rate limits to ensure
+   * fair usage and system stability. When you exceed the limit, you'll receive this
+   * error along with headers indicating when you can retry.
+   *
+   * Check the `X-RateLimit-Reset` header to know when your limit will reset.
+   * Consider implementing exponential backoff in your application.
+   *
+   */
+  429: Error;
+};
+
+export type GetCompanyUpdateError =
+  GetCompanyUpdateErrors[keyof GetCompanyUpdateErrors];
+
+export type GetCompanyUpdateResponses = {
+  /**
+   * Successful response
+   */
+  200: CompanyUpdateEnvelope;
+};
+
+export type GetCompanyUpdateResponse =
+  GetCompanyUpdateResponses[keyof GetCompanyUpdateResponses];
+
+export type ListCompanyQuestionsData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: {
+    sort?: "relevance" | "recent" | "upvoted" | "unanswered";
+    past_raises?: boolean;
+    /**
+     * Full-text search over questions and answers. At most 200 bytes.
+     */
+    q?: string;
+    unanswered_by_team?: boolean;
+    cursor?: string;
+    per_page?: number;
+  };
+  url: "/companies/{id}/questions";
+};
+
+export type ListCompanyQuestionsErrors = {
+  /**
+   * `sort` is not one of the tab's options, or `q` is over 200 bytes.
+   */
+  400: unknown;
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * Unknown company, or one the site does not show this viewer.
+   */
+  404: unknown;
+  /**
+   * Too many requests in a short time period. The API enforces rate limits to ensure
+   * fair usage and system stability. When you exceed the limit, you'll receive this
+   * error along with headers indicating when you can retry.
+   *
+   * Check the `X-RateLimit-Reset` header to know when your limit will reset.
+   * Consider implementing exponential backoff in your application.
+   *
+   */
+  429: Error;
+};
+
+export type ListCompanyQuestionsError =
+  ListCompanyQuestionsErrors[keyof ListCompanyQuestionsErrors];
+
+export type ListCompanyQuestionsResponses = {
+  /**
+   * Successful response
+   */
+  200: CompanyQuestionListEnvelope;
+};
+
+export type ListCompanyQuestionsResponse =
+  ListCompanyQuestionsResponses[keyof ListCompanyQuestionsResponses];
+
+export type SearchCompaniesData = {
+  body?: never;
+  path?: never;
+  query: {
+    /**
+     * The company name, or part of it. At most 200 characters and 500 bytes.
+     */
+    q: string;
+    /**
+     * Maximum results, 1–20. Default 8, the same as the site.
+     */
+    limit?: number;
+  };
+  url: "/companies/search";
+};
+
+export type SearchCompaniesErrors = {
+  /**
+   * `q` is missing, blank, or over 200 characters / 500 bytes.
+   */
+  400: unknown;
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The token holds neither `read:public` nor `read:explore`.
+   */
+  403: unknown;
+  /**
+   * Too many requests in a short time period. The API enforces rate limits to ensure
+   * fair usage and system stability. When you exceed the limit, you'll receive this
+   * error along with headers indicating when you can retry.
+   *
+   * Check the `X-RateLimit-Reset` header to know when your limit will reset.
+   * Consider implementing exponential backoff in your application.
+   *
+   */
+  429: Error;
+  /**
+   * The search provider failed; retry. Not "no results".
+   */
+  503: unknown;
+};
+
+export type SearchCompaniesError =
+  SearchCompaniesErrors[keyof SearchCompaniesErrors];
+
+export type SearchCompaniesResponses = {
+  /**
+   * Successful response
+   */
+  200: CompanySearchResultListEnvelope;
+};
+
+export type SearchCompaniesResponse =
+  SearchCompaniesResponses[keyof SearchCompaniesResponses];
+
+export type GetCompanyData = {
+  body?: never;
+  path: {
+    /**
+     * The company's id (`co_...`).
+     */
+    id: string;
+  };
+  query?: never;
+  url: "/companies/{id}";
+};
+
+export type GetCompanyErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * Unknown id, or a company the viewer may not see.
+   */
+  404: unknown;
+  /**
+   * Too many requests in a short time period. The API enforces rate limits to ensure
+   * fair usage and system stability. When you exceed the limit, you'll receive this
+   * error along with headers indicating when you can retry.
+   *
+   * Check the `X-RateLimit-Reset` header to know when your limit will reset.
+   * Consider implementing exponential backoff in your application.
+   *
+   */
+  429: Error;
+};
+
+export type GetCompanyError = GetCompanyErrors[keyof GetCompanyErrors];
+
+export type GetCompanyResponses = {
+  /**
+   * Successful response
+   */
+  200: CompanyEnvelope;
+};
+
+export type GetCompanyResponse = GetCompanyResponses[keyof GetCompanyResponses];
+
 export type GetCurrentUserData = {
   body?: never;
   path?: never;
@@ -2297,22 +4344,14 @@ export type GetCurrentUserResponses = {
 export type GetCurrentUserResponse =
   GetCurrentUserResponses[keyof GetCurrentUserResponses];
 
-export type ListInvestmentsData = {
+export type ListMyCompaniesData = {
   body?: never;
   path?: never;
-  query?: {
-    /**
-     * Cursor-based pagination token. Use the `next_cursor` value from the previous response's
-     * `meta` object to retrieve the next page of results. Omit this parameter to retrieve the
-     * first page.
-     *
-     */
-    cursor?: number;
-  };
-  url: "/investments";
+  query?: never;
+  url: "/users/me/companies";
 };
 
-export type ListInvestmentsErrors = {
+export type ListMyCompaniesErrors = {
   /**
    * Authentication required or token is invalid/expired. This error occurs when:
    * - No Authorization header is provided
@@ -2336,18 +4375,370 @@ export type ListInvestmentsErrors = {
   429: Error;
 };
 
+export type ListMyCompaniesError =
+  ListMyCompaniesErrors[keyof ListMyCompaniesErrors];
+
+export type ListMyCompaniesResponses = {
+  /**
+   * Successful response
+   */
+  200: MyCompanyListEnvelope;
+};
+
+export type ListMyCompaniesResponse =
+  ListMyCompaniesResponses[keyof ListMyCompaniesResponses];
+
+export type ListFollowedCompaniesData = {
+  body?: never;
+  path?: never;
+  query?: {
+    cursor?: string;
+    per_page?: number;
+  };
+  url: "/users/me/follows";
+};
+
+export type ListFollowedCompaniesErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * Too many requests in a short time period. The API enforces rate limits to ensure
+   * fair usage and system stability. When you exceed the limit, you'll receive this
+   * error along with headers indicating when you can retry.
+   *
+   * Check the `X-RateLimit-Reset` header to know when your limit will reset.
+   * Consider implementing exponential backoff in your application.
+   *
+   */
+  429: Error;
+};
+
+export type ListFollowedCompaniesError =
+  ListFollowedCompaniesErrors[keyof ListFollowedCompaniesErrors];
+
+export type ListFollowedCompaniesResponses = {
+  /**
+   * Successful response
+   */
+  200: FollowedCompanyListEnvelope;
+};
+
+export type ListFollowedCompaniesResponse =
+  ListFollowedCompaniesResponses[keyof ListFollowedCompaniesResponses];
+
+export type UnfollowCompanyData = {
+  body?: never;
+  path: {
+    company_id: string;
+  };
+  query?: never;
+  url: "/users/me/follows/{company_id}";
+};
+
+export type UnfollowCompanyErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The token does not hold `write:follows`.
+   */
+  403: unknown;
+  /**
+   * Unknown company.
+   */
+  404: unknown;
+  /**
+   * Too many requests in a short time period. The API enforces rate limits to ensure
+   * fair usage and system stability. When you exceed the limit, you'll receive this
+   * error along with headers indicating when you can retry.
+   *
+   * Check the `X-RateLimit-Reset` header to know when your limit will reset.
+   * Consider implementing exponential backoff in your application.
+   *
+   */
+  429: Error;
+};
+
+export type UnfollowCompanyError =
+  UnfollowCompanyErrors[keyof UnfollowCompanyErrors];
+
+export type UnfollowCompanyResponses = {
+  /**
+   * The follow state after the call.
+   */
+  200: FollowStateEnvelope;
+};
+
+export type UnfollowCompanyResponse =
+  UnfollowCompanyResponses[keyof UnfollowCompanyResponses];
+
+export type FollowCompanyData = {
+  body?: never;
+  path: {
+    company_id: string;
+  };
+  query?: never;
+  url: "/users/me/follows/{company_id}";
+};
+
+export type FollowCompanyErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The token does not hold `write:follows`.
+   */
+  403: unknown;
+  /**
+   * Unknown company, or one the site does not show this user.
+   */
+  404: unknown;
+  /**
+   * Too many requests in a short time period. The API enforces rate limits to ensure
+   * fair usage and system stability. When you exceed the limit, you'll receive this
+   * error along with headers indicating when you can retry.
+   *
+   * Check the `X-RateLimit-Reset` header to know when your limit will reset.
+   * Consider implementing exponential backoff in your application.
+   *
+   */
+  429: Error;
+};
+
+export type FollowCompanyError = FollowCompanyErrors[keyof FollowCompanyErrors];
+
+export type FollowCompanyResponses = {
+  /**
+   * The follow state after the call.
+   */
+  200: FollowStateEnvelope;
+};
+
+export type FollowCompanyResponse =
+  FollowCompanyResponses[keyof FollowCompanyResponses];
+
+export type ListInvestmentsData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Company external id (`co_…`).
+     */
+    company_id?: string;
+    /**
+     * Offering external id (`ofr_…`). In sync mode an investment that moved to another
+     * offering is delivered once more as a tombstone under this filter.
+     *
+     */
+    offering_id?: string;
+    /**
+     * Investor external id (`usr_…`).
+     */
+    investor_id?: string;
+    /**
+     * List mode only.
+     */
+    status?: "reserved" | "active" | "executed" | "canceled" | "converted";
+    /**
+     * ISO 8601 timestamp; switches to sync mode. Mutually exclusive with `cursor` (cursor wins).
+     */
+    updated_since?: string;
+    /**
+     * Opaque cursor from a previous response's `meta.next_cursor`.
+     */
+    cursor?: string;
+    /**
+     * Records per page, 1–100 (default 25). Sync pages count distinct investments.
+     */
+    per_page?: number;
+  };
+  url: "/investments";
+};
+
+export type ListInvestmentsErrors = {
+  /**
+   * Malformed cursor or `updated_since`, unknown `status`, or `status` combined with sync.
+   */
+  400: unknown;
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * Unknown `company_id`, `offering_id` or `investor_id`.
+   */
+  404: unknown;
+  /**
+   * The cursor or `updated_since` is older than the retention window. List again (no
+   * cursor) and replace your stored records from the result.
+   *
+   */
+  410: unknown;
+  /**
+   * Too many requests in a short time period. The API enforces rate limits to ensure
+   * fair usage and system stability. When you exceed the limit, you'll receive this
+   * error along with headers indicating when you can retry.
+   *
+   * Check the `X-RateLimit-Reset` header to know when your limit will reset.
+   * Consider implementing exponential backoff in your application.
+   *
+   */
+  429: Error;
+};
+
 export type ListInvestmentsError =
   ListInvestmentsErrors[keyof ListInvestmentsErrors];
 
 export type ListInvestmentsResponses = {
   /**
-   * Successful response
+   * A page of records.
    */
   200: InvestmentListEnvelope;
 };
 
 export type ListInvestmentsResponse =
   ListInvestmentsResponses[keyof ListInvestmentsResponses];
+
+export type GetInvestmentData = {
+  body?: never;
+  path: {
+    /**
+     * Investment external id (`inv_…`).
+     */
+    id: string;
+  };
+  query?: never;
+  url: "/investments/{id}";
+};
+
+export type GetInvestmentErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * Not found, not in the token's audience, or not visible to it.
+   */
+  404: unknown;
+  /**
+   * Too many requests in a short time period. The API enforces rate limits to ensure
+   * fair usage and system stability. When you exceed the limit, you'll receive this
+   * error along with headers indicating when you can retry.
+   *
+   * Check the `X-RateLimit-Reset` header to know when your limit will reset.
+   * Consider implementing exponential backoff in your application.
+   *
+   */
+  429: Error;
+};
+
+export type GetInvestmentError = GetInvestmentErrors[keyof GetInvestmentErrors];
+
+export type GetInvestmentResponses = {
+  /**
+   * The current record.
+   */
+  200: InvestmentEnvelope;
+};
+
+export type GetInvestmentResponse =
+  GetInvestmentResponses[keyof GetInvestmentResponses];
+
+export type GetOfferingStatsData = {
+  body?: never;
+  path: {
+    /**
+     * Offering external id (`ofr_…`).
+     */
+    offering_id: string;
+  };
+  query?: never;
+  url: "/offerings/{offering_id}/stats";
+};
+
+export type GetOfferingStatsErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The token's user does not edit the offering's company.
+   */
+  403: unknown;
+  /**
+   * Unknown offering.
+   */
+  404: unknown;
+  /**
+   * Too many requests in a short time period. The API enforces rate limits to ensure
+   * fair usage and system stability. When you exceed the limit, you'll receive this
+   * error along with headers indicating when you can retry.
+   *
+   * Check the `X-RateLimit-Reset` header to know when your limit will reset.
+   * Consider implementing exponential backoff in your application.
+   *
+   */
+  429: Error;
+};
+
+export type GetOfferingStatsError =
+  GetOfferingStatsErrors[keyof GetOfferingStatsErrors];
+
+export type GetOfferingStatsResponses = {
+  /**
+   * Totals by status.
+   */
+  200: OfferingStatsEnvelope;
+};
+
+export type GetOfferingStatsResponse =
+  GetOfferingStatsResponses[keyof GetOfferingStatsResponses];
 
 export type GetPortfolioData = {
   body?: never;
@@ -2874,7 +5265,7 @@ export type RemoveSyndicateMemberData = {
      */
     syndicate_id: string;
     /**
-     * The member ID
+     * The member's id (`mem_...`), as returned by the members list (`data[].id`). Integer ids are internal and not accepted.
      */
     member_id: string;
   };
@@ -2905,7 +5296,7 @@ export type UpdateSyndicateMemberData = {
      */
     syndicate_id: string;
     /**
-     * The member ID
+     * The member's id (`mem_...`), as returned by the members list (`data[].id`). Integer ids are internal and not accepted.
      */
     member_id: string;
   };
@@ -2959,7 +5350,7 @@ export type ApproveSyndicateMemberData = {
      */
     syndicate_id: string;
     /**
-     * The member ID
+     * The member's id (`mem_...`), as returned by the members list (`data[].id`). Integer ids are internal and not accepted.
      */
     member_id: string;
   };
@@ -3013,7 +5404,7 @@ export type HideSyndicateMemberData = {
      */
     syndicate_id: string;
     /**
-     * The member ID
+     * The member's id (`mem_...`), as returned by the members list (`data[].id`). Integer ids are internal and not accepted.
      */
     member_id: string;
   };
@@ -3067,7 +5458,7 @@ export type PromoteSyndicateMemberData = {
      */
     syndicate_id: string;
     /**
-     * The member ID
+     * The member's id (`mem_...`), as returned by the members list (`data[].id`). Integer ids are internal and not accepted.
      */
     member_id: string;
   };
@@ -3121,7 +5512,7 @@ export type DemoteSyndicateMemberData = {
      */
     syndicate_id: string;
     /**
-     * The member ID
+     * The member's id (`mem_...`), as returned by the members list (`data[].id`). Integer ids are internal and not accepted.
      */
     member_id: string;
   };
@@ -3175,7 +5566,7 @@ export type RestoreSyndicateMemberData = {
      */
     syndicate_id: string;
     /**
-     * The member ID
+     * The member's id (`mem_...`), as returned by the members list (`data[].id`). Integer ids are internal and not accepted.
      */
     member_id: string;
   };
@@ -3229,7 +5620,7 @@ export type ResendSyndicateInviteData = {
      */
     syndicate_id: string;
     /**
-     * The member ID
+     * The member's id (`mem_...`), as returned by the members list (`data[].id`). Integer ids are internal and not accepted.
      */
     member_id: string;
   };
@@ -3429,9 +5820,9 @@ export type GetSyndicateDealData = {
      */
     syndicate_id: string;
     /**
-     * The deal (fundraise) ID
+     * The deal's id (`ofr_...`), as returned by the deals list. Integer ids are internal and not accepted.
      */
-    fundraise_id: number;
+    fundraise_id: string;
   };
   query?: never;
   url: "/syndicates/{syndicate_id}/deals/{fundraise_id}";
@@ -3487,9 +5878,9 @@ export type ListSyndicateDealInvestorsData = {
      */
     syndicate_id: string;
     /**
-     * The deal (fundraise) ID
+     * The deal's id (`ofr_...`), as returned by the deals list. Integer ids are internal and not accepted.
      */
-    fundraise_id: number;
+    fundraise_id: string;
   };
   query?: {
     /**
@@ -3554,7 +5945,7 @@ export type ListSyndicateMemberInvestmentsData = {
      */
     syndicate_id: string;
     /**
-     * The member ID
+     * The member's id (`mem_...`), as returned by the members list (`data[].id`). Integer ids are internal and not accepted.
      */
     member_id: string;
   };
@@ -3807,9 +6198,9 @@ export type CloseSyndicateDealData = {
      */
     syndicate_id: string;
     /**
-     * The deal (fundraise) ID
+     * The deal's id (`ofr_...`), as returned by the deals list. Integer ids are internal and not accepted.
      */
-    fundraise_id: number;
+    fundraise_id: string;
   };
   query?: never;
   url: "/syndicates/{syndicate_id}/deals/{fundraise_id}/close";
@@ -3869,9 +6260,9 @@ export type FinalizeSyndicateDealData = {
      */
     syndicate_id: string;
     /**
-     * The deal (fundraise) ID
+     * The deal's id (`ofr_...`), as returned by the deals list. Integer ids are internal and not accepted.
      */
-    fundraise_id: number;
+    fundraise_id: string;
   };
   query?: never;
   url: "/syndicates/{syndicate_id}/deals/{fundraise_id}/finalize";
@@ -3922,6 +6313,61 @@ export type FinalizeSyndicateDealResponses = {
 
 export type FinalizeSyndicateDealResponse =
   FinalizeSyndicateDealResponses[keyof FinalizeSyndicateDealResponses];
+
+export type PreviewIntentData = {
+  body: {
+    action_name: string;
+    resource_type: string;
+    resource_id: string;
+    params?: {
+      [key: string]: unknown;
+    };
+  };
+  path?: never;
+  query?: never;
+  url: "/intents/preview";
+};
+
+export type PreviewIntentErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The handler refused it; `error.message` is the reason.
+   */
+  422: Error;
+};
+
+export type PreviewIntentError = PreviewIntentErrors[keyof PreviewIntentErrors];
+
+export type PreviewIntentResponses = {
+  /**
+   * The proposal would be accepted.
+   */
+  200: IntentPreviewEnvelope;
+};
+
+export type PreviewIntentResponse =
+  PreviewIntentResponses[keyof PreviewIntentResponses];
 
 export type ListIntentsData = {
   body?: never;
@@ -3976,13 +6422,14 @@ export type CreateIntentData = {
       | "syndicates.finalize_deal"
       | "syndicates.publish"
       | "syndicates.remove_member"
-      | "syndicates.delete_draft";
+      | "syndicates.delete_draft"
+      | "comments.create";
     /**
-     * The model class name of the resource
+     * The resource type the action targets, as the action table names it; the example is the syndicate type.
      */
     resource_type: string;
     /**
-     * The syndicate's id (`syn_...`).
+     * The resource's id in the API's vocabulary — the syndicate's `syn_...` for a `syndicates.*` action.
      */
     resource_id: string;
     /**
@@ -3992,7 +6439,7 @@ export type CreateIntentData = {
       [key: string]: unknown;
     };
     /**
-     * Client-provided deduplication key. If a pending/executed intent exists with this key, the existing intent is returned.
+     * Client-provided key naming this one operation. While an intent with this key is pending, approved, executing, or executed, the same operation returns it (200); a different operation under the same key is a 409.
      */
     idempotency_key?: string;
     /**
@@ -4029,9 +6476,9 @@ export type CreateIntentErrors = {
    */
   403: Error;
   /**
-   * Duplicate idempotency key (returns existing intent)
+   * `idempotency_conflict` — the key was already used for a different operation. Nothing was minted.
    */
-  409: IntentEnvelope;
+  409: Error;
   /**
    * Invalid action or parameters
    */
@@ -4041,6 +6488,10 @@ export type CreateIntentErrors = {
 export type CreateIntentError = CreateIntentErrors[keyof CreateIntentErrors];
 
 export type CreateIntentResponses = {
+  /**
+   * Idempotent replay — the existing intent for this key and operation.
+   */
+  200: IntentEnvelope;
   /**
    * Intent created
    */
@@ -4054,7 +6505,7 @@ export type GetIntentData = {
   body?: never;
   path: {
     /**
-     * Intent UUID
+     * The intent's id (`int_...`), as returned when the intent was minted (`data.id` / `meta.*_intent.id`). The legacy UUID form is still accepted.
      */
     intent_id: string;
   };
@@ -4397,6 +6848,848 @@ export type ListAttributedInvestmentsResponses = {
 
 export type ListAttributedInvestmentsResponse =
   ListAttributedInvestmentsResponses[keyof ListAttributedInvestmentsResponses];
+
+export type ListInstallationsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/installations";
+};
+
+export type ListInstallationsErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+};
+
+export type ListInstallationsError =
+  ListInstallationsErrors[keyof ListInstallationsErrors];
+
+export type ListInstallationsResponses = {
+  /**
+   * Installations of the calling application
+   */
+  200: InstallationListEnvelope;
+};
+
+export type ListInstallationsResponse =
+  ListInstallationsResponses[keyof ListInstallationsResponses];
+
+export type CreateInstallationData = {
+  body: {
+    target_type: "company" | "syndicate";
+    /**
+     * The company (`co_…`) or syndicate (`syn_…`) external id.
+     */
+    target_id: string;
+    /**
+     * Subset of the app's declared scopes to grant. Defaults to all of them.
+     */
+    scopes?: Array<string>;
+    /**
+     * Optional higher tier (`founder` / `full_access`), honored only when the caller holds it.
+     */
+    tier?: string;
+  };
+  path?: never;
+  query?: never;
+  url: "/installations";
+};
+
+export type CreateInstallationErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+  /**
+   * Already installed here; `error.details.installation` is the existing install's id.
+   */
+  409: unknown;
+  /**
+   * Unknown `target_type`, or none of the requested scopes can be granted by the caller's role.
+   */
+  422: unknown;
+};
+
+export type CreateInstallationError =
+  CreateInstallationErrors[keyof CreateInstallationErrors];
+
+export type CreateInstallationResponses = {
+  /**
+   * The new installation and its token (shown once)
+   */
+  201: InstallationTokenEnvelope;
+};
+
+export type CreateInstallationResponse =
+  CreateInstallationResponses[keyof CreateInstallationResponses];
+
+export type ListEligibleInstallTargetsData = {
+  body?: never;
+  path?: never;
+  query?: {
+    target_type?: "company" | "syndicate";
+  };
+  url: "/installations/eligible";
+};
+
+export type ListEligibleInstallTargetsErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+};
+
+export type ListEligibleInstallTargetsError =
+  ListEligibleInstallTargetsErrors[keyof ListEligibleInstallTargetsErrors];
+
+export type ListEligibleInstallTargetsResponses = {
+  /**
+   * Eligible install targets
+   */
+  200: EligibleTargetListEnvelope;
+};
+
+export type ListEligibleInstallTargetsResponse =
+  ListEligibleInstallTargetsResponses[keyof ListEligibleInstallTargetsResponses];
+
+export type RevokeInstallationData = {
+  body?: never;
+  path: {
+    /**
+     * Installation external id (`inst_…`).
+     */
+    external_id: string;
+  };
+  query?: never;
+  url: "/installations/{external_id}";
+};
+
+export type RevokeInstallationErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+};
+
+export type RevokeInstallationError =
+  RevokeInstallationErrors[keyof RevokeInstallationErrors];
+
+export type RevokeInstallationResponses = {
+  /**
+   * The installation, now revoked
+   */
+  200: InstallationEnvelope;
+};
+
+export type RevokeInstallationResponse =
+  RevokeInstallationResponses[keyof RevokeInstallationResponses];
+
+export type GetInstallationData = {
+  body?: never;
+  path: {
+    /**
+     * Installation external id (`inst_…`).
+     */
+    external_id: string;
+  };
+  query?: never;
+  url: "/installations/{external_id}";
+};
+
+export type GetInstallationErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+};
+
+export type GetInstallationError =
+  GetInstallationErrors[keyof GetInstallationErrors];
+
+export type GetInstallationResponses = {
+  /**
+   * The installation
+   */
+  200: InstallationEnvelope;
+};
+
+export type GetInstallationResponse =
+  GetInstallationResponses[keyof GetInstallationResponses];
+
+export type CreateInstallationTokenData = {
+  body?: {
+    scopes?: Array<string>;
+  };
+  path: {
+    external_id: string;
+  };
+  query?: never;
+  url: "/installations/{external_id}/tokens";
+};
+
+export type CreateInstallationTokenErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+  /**
+   * The installation has been revoked.
+   */
+  409: unknown;
+};
+
+export type CreateInstallationTokenError =
+  CreateInstallationTokenErrors[keyof CreateInstallationTokenErrors];
+
+export type CreateInstallationTokenResponses = {
+  /**
+   * The installation and a new token (shown once)
+   */
+  201: InstallationTokenEnvelope;
+};
+
+export type CreateInstallationTokenResponse =
+  CreateInstallationTokenResponses[keyof CreateInstallationTokenResponses];
+
+export type ListWebhookEndpointsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/webhook_endpoints";
+};
+
+export type ListWebhookEndpointsErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+};
+
+export type ListWebhookEndpointsError =
+  ListWebhookEndpointsErrors[keyof ListWebhookEndpointsErrors];
+
+export type ListWebhookEndpointsResponses = {
+  /**
+   * Endpoints for the calling application
+   */
+  200: WebhookEndpointListEnvelope;
+};
+
+export type ListWebhookEndpointsResponse =
+  ListWebhookEndpointsResponses[keyof ListWebhookEndpointsResponses];
+
+export type CreateWebhookEndpointData = {
+  body: {
+    /**
+     * Public HTTPS URL to receive deliveries (private/internal IPs rejected).
+     */
+    url: string;
+    /**
+     * Event names to subscribe to (from the event catalog). At least one.
+     */
+    events: Array<
+      | "investment.created"
+      | "investment.reinstated"
+      | "investment.canceled"
+      | "investment.converted"
+      | "investment.amount_changed"
+      | "investment.executed"
+      | "offering.opened"
+      | "offering.closing"
+      | "offering.closed"
+      | "offering.canceled"
+      | "investment_session.created"
+      | "investment_session.started"
+      | "investment_session.completed"
+      | "investment_session.expired"
+      | "investment_session.canceled"
+      | "investment.changed"
+      | "syndicate_member.invited"
+      | "syndicate_member.reinvited"
+      | "syndicate_member.applied"
+      | "syndicate_member.approved"
+      | "syndicate_member.joined"
+    >;
+    mode?: "live" | "test";
+  };
+  path?: never;
+  query?: never;
+  url: "/webhook_endpoints";
+};
+
+export type CreateWebhookEndpointErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * Validation error (bad URL, unknown or missing events, invalid mode, or quota reached)
+   */
+  422: Error;
+};
+
+export type CreateWebhookEndpointError =
+  CreateWebhookEndpointErrors[keyof CreateWebhookEndpointErrors];
+
+export type CreateWebhookEndpointResponses = {
+  /**
+   * Endpoint created (includes the one-time secret)
+   */
+  201: WebhookEndpointEnvelope;
+};
+
+export type CreateWebhookEndpointResponse =
+  CreateWebhookEndpointResponses[keyof CreateWebhookEndpointResponses];
+
+export type DeleteWebhookEndpointData = {
+  body?: never;
+  path: {
+    /**
+     * The webhook endpoint's id (whe_...).
+     */
+    external_id: string;
+  };
+  query?: never;
+  url: "/webhook_endpoints/{external_id}";
+};
+
+export type DeleteWebhookEndpointErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+};
+
+export type DeleteWebhookEndpointError =
+  DeleteWebhookEndpointErrors[keyof DeleteWebhookEndpointErrors];
+
+export type DeleteWebhookEndpointResponses = {
+  /**
+   * Removed
+   */
+  200: {
+    data?: {
+      id?: string;
+      type?: string;
+      removed?: boolean;
+    };
+  };
+};
+
+export type DeleteWebhookEndpointResponse =
+  DeleteWebhookEndpointResponses[keyof DeleteWebhookEndpointResponses];
+
+export type GetWebhookEndpointData = {
+  body?: never;
+  path: {
+    /**
+     * The webhook endpoint's id (whe_...).
+     */
+    external_id: string;
+  };
+  query?: never;
+  url: "/webhook_endpoints/{external_id}";
+};
+
+export type GetWebhookEndpointErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+};
+
+export type GetWebhookEndpointError =
+  GetWebhookEndpointErrors[keyof GetWebhookEndpointErrors];
+
+export type GetWebhookEndpointResponses = {
+  /**
+   * The endpoint (secret omitted)
+   */
+  200: WebhookEndpointEnvelope;
+};
+
+export type GetWebhookEndpointResponse =
+  GetWebhookEndpointResponses[keyof GetWebhookEndpointResponses];
+
+export type UpdateWebhookEndpointData = {
+  body?: {
+    url?: string;
+    events?: Array<
+      | "investment.created"
+      | "investment.reinstated"
+      | "investment.canceled"
+      | "investment.converted"
+      | "investment.amount_changed"
+      | "investment.executed"
+      | "offering.opened"
+      | "offering.closing"
+      | "offering.closed"
+      | "offering.canceled"
+      | "investment_session.created"
+      | "investment_session.started"
+      | "investment_session.completed"
+      | "investment_session.expired"
+      | "investment_session.canceled"
+      | "investment.changed"
+      | "syndicate_member.invited"
+      | "syndicate_member.reinvited"
+      | "syndicate_member.applied"
+      | "syndicate_member.approved"
+      | "syndicate_member.joined"
+    >;
+  };
+  path: {
+    /**
+     * The webhook endpoint's id (whe_...).
+     */
+    external_id: string;
+  };
+  query?: never;
+  url: "/webhook_endpoints/{external_id}";
+};
+
+export type UpdateWebhookEndpointErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+  /**
+   * Validation error
+   */
+  422: Error;
+};
+
+export type UpdateWebhookEndpointError =
+  UpdateWebhookEndpointErrors[keyof UpdateWebhookEndpointErrors];
+
+export type UpdateWebhookEndpointResponses = {
+  /**
+   * Updated endpoint (secret omitted)
+   */
+  200: WebhookEndpointEnvelope;
+};
+
+export type UpdateWebhookEndpointResponse =
+  UpdateWebhookEndpointResponses[keyof UpdateWebhookEndpointResponses];
+
+export type RotateWebhookEndpointSecretData = {
+  body?: never;
+  path: {
+    /**
+     * The webhook endpoint's id (whe_...).
+     */
+    external_id: string;
+  };
+  query?: never;
+  url: "/webhook_endpoints/{external_id}/rotate_secret";
+};
+
+export type RotateWebhookEndpointSecretErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+};
+
+export type RotateWebhookEndpointSecretError =
+  RotateWebhookEndpointSecretErrors[keyof RotateWebhookEndpointSecretErrors];
+
+export type RotateWebhookEndpointSecretResponses = {
+  /**
+   * Rotated (includes the new one-time secret)
+   */
+  200: WebhookEndpointEnvelope;
+};
+
+export type RotateWebhookEndpointSecretResponse =
+  RotateWebhookEndpointSecretResponses[keyof RotateWebhookEndpointSecretResponses];
+
+export type ReenableWebhookEndpointData = {
+  body?: never;
+  path: {
+    /**
+     * The webhook endpoint's id (whe_...).
+     */
+    external_id: string;
+  };
+  query?: never;
+  url: "/webhook_endpoints/{external_id}/reenable";
+};
+
+export type ReenableWebhookEndpointErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+};
+
+export type ReenableWebhookEndpointError =
+  ReenableWebhookEndpointErrors[keyof ReenableWebhookEndpointErrors];
+
+export type ReenableWebhookEndpointResponses = {
+  /**
+   * The (now enabled) endpoint
+   */
+  200: WebhookEndpointEnvelope;
+};
+
+export type ReenableWebhookEndpointResponse =
+  ReenableWebhookEndpointResponses[keyof ReenableWebhookEndpointResponses];
+
+export type TestWebhookEndpointData = {
+  body?: {
+    /**
+     * Event to simulate. Defaults to the endpoint's first subscribed event.
+     */
+    event?:
+      | "investment.created"
+      | "investment.reinstated"
+      | "investment.canceled"
+      | "investment.converted"
+      | "investment.amount_changed"
+      | "investment.executed"
+      | "offering.opened"
+      | "offering.closing"
+      | "offering.closed"
+      | "offering.canceled"
+      | "investment_session.created"
+      | "investment_session.started"
+      | "investment_session.completed"
+      | "investment_session.expired"
+      | "investment_session.canceled"
+      | "investment.changed"
+      | "syndicate_member.invited"
+      | "syndicate_member.reinvited"
+      | "syndicate_member.applied"
+      | "syndicate_member.approved"
+      | "syndicate_member.joined";
+  };
+  path: {
+    /**
+     * The webhook endpoint's id (whe_...).
+     */
+    external_id: string;
+  };
+  query?: never;
+  url: "/webhook_endpoints/{external_id}/test";
+};
+
+export type TestWebhookEndpointErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+  /**
+   * Endpoint is not subscribed to the event, or the event has no example
+   */
+  422: Error;
+  /**
+   * Too many requests in a short time period. The API enforces rate limits to ensure
+   * fair usage and system stability. When you exceed the limit, you'll receive this
+   * error along with headers indicating when you can retry.
+   *
+   * Check the `X-RateLimit-Reset` header to know when your limit will reset.
+   * Consider implementing exponential backoff in your application.
+   *
+   */
+  429: Error;
+};
+
+export type TestWebhookEndpointError =
+  TestWebhookEndpointErrors[keyof TestWebhookEndpointErrors];
+
+export type TestWebhookEndpointResponses = {
+  /**
+   * Test outcome
+   */
+  200: WebhookEndpointTestResultEnvelope;
+};
+
+export type TestWebhookEndpointResponse =
+  TestWebhookEndpointResponses[keyof TestWebhookEndpointResponses];
 
 export type ListWebhookSubscriptionsData = {
   body?: never;

@@ -15,15 +15,27 @@ import type {
   CloseSyndicateDealData,
   CloseSyndicateDealErrors,
   CloseSyndicateDealResponses,
+  CreateInstallationData,
+  CreateInstallationErrors,
+  CreateInstallationResponses,
+  CreateInstallationTokenData,
+  CreateInstallationTokenErrors,
+  CreateInstallationTokenResponses,
   CreateIntentData,
   CreateIntentErrors,
   CreateIntentResponses,
   CreatePartnerInviteData,
   CreatePartnerInviteErrors,
   CreatePartnerInviteResponses,
+  CreateWebhookEndpointData,
+  CreateWebhookEndpointErrors,
+  CreateWebhookEndpointResponses,
   CreateWebhookSubscriptionData,
   CreateWebhookSubscriptionErrors,
   CreateWebhookSubscriptionResponses,
+  DeleteWebhookEndpointData,
+  DeleteWebhookEndpointErrors,
+  DeleteWebhookEndpointResponses,
   DeleteWebhookSubscriptionData,
   DeleteWebhookSubscriptionErrors,
   DeleteWebhookSubscriptionResponses,
@@ -36,21 +48,45 @@ import type {
   FinalizeSyndicateDealData,
   FinalizeSyndicateDealErrors,
   FinalizeSyndicateDealResponses,
+  FollowCompanyData,
+  FollowCompanyErrors,
+  FollowCompanyResponses,
   GetAttributionMeData,
   GetAttributionMeErrors,
   GetAttributionMeResponses,
   GetAttributionStatsData,
   GetAttributionStatsErrors,
   GetAttributionStatsResponses,
+  GetCompanyData,
+  GetCompanyDisclosuresData,
+  GetCompanyDisclosuresErrors,
+  GetCompanyDisclosuresResponses,
+  GetCompanyErrors,
+  GetCompanyPitchData,
+  GetCompanyPitchErrors,
+  GetCompanyPitchResponses,
+  GetCompanyResponses,
+  GetCompanyUpdateData,
+  GetCompanyUpdateErrors,
+  GetCompanyUpdateResponses,
   GetCurrentUserData,
   GetCurrentUserErrors,
   GetCurrentUserResponses,
+  GetInstallationData,
+  GetInstallationErrors,
+  GetInstallationResponses,
   GetIntentData,
   GetIntentErrors,
   GetIntentResponses,
+  GetInvestmentData,
+  GetInvestmentErrors,
+  GetInvestmentResponses,
   GetOfferingData,
   GetOfferingErrors,
   GetOfferingResponses,
+  GetOfferingStatsData,
+  GetOfferingStatsErrors,
+  GetOfferingStatsResponses,
   GetPortfolioData,
   GetPortfolioErrors,
   GetPortfolioResponses,
@@ -66,6 +102,9 @@ import type {
   GetSyndicateStatisticsData,
   GetSyndicateStatisticsErrors,
   GetSyndicateStatisticsResponses,
+  GetWebhookEndpointData,
+  GetWebhookEndpointErrors,
+  GetWebhookEndpointResponses,
   GetWebhookSubscriptionData,
   GetWebhookSubscriptionErrors,
   GetWebhookSubscriptionResponses,
@@ -87,15 +126,33 @@ import type {
   ListCampaignsData,
   ListCampaignsErrors,
   ListCampaignsResponses,
+  ListCompanyQuestionsData,
+  ListCompanyQuestionsErrors,
+  ListCompanyQuestionsResponses,
+  ListCompanyUpdatesData,
+  ListCompanyUpdatesErrors,
+  ListCompanyUpdatesResponses,
   ListConnectedAppsData,
   ListConnectedAppsErrors,
   ListConnectedAppsResponses,
+  ListEligibleInstallTargetsData,
+  ListEligibleInstallTargetsErrors,
+  ListEligibleInstallTargetsResponses,
+  ListFollowedCompaniesData,
+  ListFollowedCompaniesErrors,
+  ListFollowedCompaniesResponses,
+  ListInstallationsData,
+  ListInstallationsErrors,
+  ListInstallationsResponses,
   ListIntentsData,
   ListIntentsErrors,
   ListIntentsResponses,
   ListInvestmentsData,
   ListInvestmentsErrors,
   ListInvestmentsResponses,
+  ListMyCompaniesData,
+  ListMyCompaniesErrors,
+  ListMyCompaniesResponses,
   ListOfferingsData,
   ListOfferingsErrors,
   ListOfferingsResponses,
@@ -123,15 +180,24 @@ import type {
   ListSyndicatesData,
   ListSyndicatesErrors,
   ListSyndicatesResponses,
+  ListWebhookEndpointsData,
+  ListWebhookEndpointsErrors,
+  ListWebhookEndpointsResponses,
   ListWebhookSubscriptionsData,
   ListWebhookSubscriptionsErrors,
   ListWebhookSubscriptionsResponses,
+  PreviewIntentData,
+  PreviewIntentErrors,
+  PreviewIntentResponses,
   PromoteSyndicateMemberData,
   PromoteSyndicateMemberErrors,
   PromoteSyndicateMemberResponses,
   ReactivateWebhookSubscriptionData,
   ReactivateWebhookSubscriptionErrors,
   ReactivateWebhookSubscriptionResponses,
+  ReenableWebhookEndpointData,
+  ReenableWebhookEndpointErrors,
+  ReenableWebhookEndpointResponses,
   RegenerateWebhookSecretData,
   RegenerateWebhookSecretErrors,
   RegenerateWebhookSecretResponses,
@@ -152,18 +218,36 @@ import type {
   RevokeConnectedAppData,
   RevokeConnectedAppErrors,
   RevokeConnectedAppResponses,
+  RevokeInstallationData,
+  RevokeInstallationErrors,
+  RevokeInstallationResponses,
   RevokePartnerInviteData,
   RevokePartnerInviteErrors,
   RevokePartnerInviteResponses,
+  RotateWebhookEndpointSecretData,
+  RotateWebhookEndpointSecretErrors,
+  RotateWebhookEndpointSecretResponses,
+  SearchCompaniesData,
+  SearchCompaniesErrors,
+  SearchCompaniesResponses,
+  TestWebhookEndpointData,
+  TestWebhookEndpointErrors,
+  TestWebhookEndpointResponses,
   TestWebhookSubscriptionData,
   TestWebhookSubscriptionErrors,
   TestWebhookSubscriptionResponses,
+  UnfollowCompanyData,
+  UnfollowCompanyErrors,
+  UnfollowCompanyResponses,
   UpdateSyndicateData,
   UpdateSyndicateErrors,
   UpdateSyndicateMemberData,
   UpdateSyndicateMemberErrors,
   UpdateSyndicateMemberResponses,
   UpdateSyndicateResponses,
+  UpdateWebhookEndpointData,
+  UpdateWebhookEndpointErrors,
+  UpdateWebhookEndpointResponses,
 } from "./types.gen";
 
 export type Options<
@@ -192,13 +276,27 @@ export type Options<
  * **one offering per company**. An "offering" is a fundraise, addressed by its id
  * (`ofr_...`).
  *
- * This is a public, read-only endpoint backed by the `read:public` scope. It is reachable
- * with either a server-side (client_credentials) token or a user access token carrying
- * `read:public`. Private rounds (e.g. Reg D 506(b)) are never listed, and low-traction or
- * unapproved companies are excluded — exactly as they are on the website.
+ * **Public view (`read:public`).** Reachable with either a server-side (client_credentials)
+ * token or a user access token. Private rounds (e.g. Reg D 506(b)) are never listed, and
+ * low-traction or unapproved companies are excluded — exactly as they are on the website
+ * for a logged-out visitor.
+ *
+ * **Logged-in view (`read:explore`).** A user access token carrying `read:explore` gets
+ * what *that user* sees on wefunder.com/explore: the public offerings plus any the user
+ * qualifies for (accredited-only / Vault deals, invited private rounds), each checked
+ * against the same visibility policy the website applies. The response is a strict
+ * superset of the public one — same fields and ids — with two extra attributes,
+ * `publicly_visible` and `invested`, and `meta.personalized: true`. A server-side key can
+ * never hold `read:explore`; a token with `read:explore` but no resolvable user gets the
+ * public view.
  *
  * Order with `sort` (default: most raised); paginate with `cursor`. `meta.total_count` is
- * the number of offerings across all pages.
+ * the number of offerings across all pages, after filters.
+ *
+ * **Filters** are objective, per-offering terms — exemption family, security type,
+ * TTW vs. live, minimum investment ceiling, close date, amount raised floor. The response
+ * echoes the applied set in `meta.filters`. An out-of-vocabulary value is a `400` naming
+ * the accepted values. There are deliberately no relevance, quality, or ranking criteria.
  *
  * Use this endpoint to:
  * - Discover and monitor active deals
@@ -213,6 +311,12 @@ export const listOfferings = <ThrowOnError extends boolean = false>(
     ListOfferingsErrors,
     ThrowOnError
   >({
+    querySerializer: {
+      parameters: {
+        industry: { array: { explode: false } },
+        business_model: { array: { explode: false } },
+      },
+    },
     security: [{ scheme: "bearer", type: "http" }],
     url: "/explore",
     ...options,
@@ -221,10 +325,13 @@ export const listOfferings = <ThrowOnError extends boolean = false>(
 /**
  * Get a public offering
  *
- * Retrieves a single public offering by its id (`ofr_...`).
+ * Retrieves a single offering by its id (`ofr_...`).
  *
- * A valid id for a non-public offering (e.g. a private Reg D 506(b) round) returns `404` —
- * having an id does not make an offering publicly resolvable.
+ * With `read:public`, a valid id for a non-public offering (e.g. a private Reg D 506(b)
+ * round) returns `404` — having an id does not make an offering publicly resolvable. With
+ * `read:explore` on a user access token, the offering resolves if *that user* may see it on
+ * wefunder.com (e.g. an accredited-only or invited round), and the response gains
+ * `publicly_visible` and `invested`.
  *
  */
 export const getOffering = <ThrowOnError extends boolean = false>(
@@ -237,6 +344,245 @@ export const getOffering = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/offerings/{external_id}",
+    ...options,
+  });
+
+/**
+ * Get a company's public Form C disclosures
+ *
+ * The Details tab of the company's Wefunder page as structured data — the company's own
+ * Form C disclosures, section for section: financial statements for the fiscal years on
+ * file, the page's ratios, the founder's current-position disclosure (cash on hand, monthly
+ * revenue / costs / burn), the financial-condition narrative, document links, risks, use of
+ * funds, directors and officers, 20%+ holders, capital structure, prior offerings, outstanding
+ * notes and debts, and related-party transactions.
+ *
+ * Same "who has a page" rule as `GET /companies/{id}`. The round read is the page's own: the
+ * display round for the viewer, swapped for its concurrent Reg CF sibling on a Reg D round,
+ * and only when it is a Reg CF / ECSP round with a Form C. A company with no such round has
+ * no details tab on the site and answers `404` with `error.type: no_disclosures` — distinct
+ * from an unknown or hidden company. A section the company hides on the site is `null`.
+ *
+ * Money is USD as decimal strings; ratios are percentages as decimal strings. Everything here
+ * is the issuer's own disclosure, served as filed, not a Wefunder assessment.
+ *
+ */
+export const getCompanyDisclosures = <ThrowOnError extends boolean = false>(
+  options: Options<GetCompanyDisclosuresData, ThrowOnError>,
+): RequestResult<
+  GetCompanyDisclosuresResponses,
+  GetCompanyDisclosuresErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetCompanyDisclosuresResponses,
+    GetCompanyDisclosuresErrors,
+    ThrowOnError
+  >({
+    querySerializer: {
+      parameters: { sections: { array: { explode: false } } },
+    },
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/companies/{id}/disclosures",
+    ...options,
+  });
+
+/**
+ * Get a company's pitch
+ *
+ * The Overview tab's pitch as structured data: the story as ordered blocks (`heading`,
+ * `paragraph`, `list`, `image`, `video`, `footnote`), plus the perk tiers of the round the page
+ * shows the viewer. Images and embedded videos keep their place in the document with an absolute
+ * URL, because founders publish perk tiers, stretch goals, timelines, and charts as pictures
+ * (typically with no alt text) and a plain-text rendering would drop them.
+ *
+ * What is parsed is what the page renders: the story passes through the site's own sanitizer
+ * first, so an embed the page refuses (a host off its allowlist, a `javascript:` URL) is never
+ * served here either. Same "who has a page" rule and round chooser as `GET /companies/{id}`.
+ * A site-public company with no round the viewer may see still has a pitch (`perks: null`).
+ * `perks.described_in_pitch` is a heuristic: true when the structured perk list is a placeholder
+ * ("See investor overview page", or one identical sentence on every tier) and the real tiers are
+ * in the story's images.
+ *
+ * `authored_by` says who wrote the story: `company` (the issuer's own words and imagery, not a
+ * Wefunder assessment) or `wefunder` (a Wefunder-prepared deal memo the company did not
+ * participate in; `disclaimer` carries the page's notice). A pitch can run to ~70 KB; use
+ * `sections` to ask for less.
+ *
+ */
+export const getCompanyPitch = <ThrowOnError extends boolean = false>(
+  options: Options<GetCompanyPitchData, ThrowOnError>,
+): RequestResult<
+  GetCompanyPitchResponses,
+  GetCompanyPitchErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetCompanyPitchResponses,
+    GetCompanyPitchErrors,
+    ThrowOnError
+  >({
+    querySerializer: {
+      parameters: { sections: { array: { explode: false } } },
+    },
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/companies/{id}/pitch",
+    ...options,
+  });
+
+/**
+ * List a company's posts
+ *
+ * The company page's Posts tab as data: the published updates, notes, and spotlights the
+ * viewer may see, pinned first then newest, with a plain-text excerpt each. With
+ * `read:explore` the viewer is the authorizing user, so a follower or investor sees the
+ * community- and investors-only posts the site shows them; with `read:public` it is the
+ * anonymous view. Same query as the tab (`FeedItem.viewable_by`); investments, Q&A threads,
+ * and investor quotes belong to other tabs and are not here. Fetch one post in full with
+ * `GET /companies/{id}/updates/{update_id}`. Posts are the issuer's own words.
+ *
+ */
+export const listCompanyUpdates = <ThrowOnError extends boolean = false>(
+  options: Options<ListCompanyUpdatesData, ThrowOnError>,
+): RequestResult<
+  ListCompanyUpdatesResponses,
+  ListCompanyUpdatesErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    ListCompanyUpdatesResponses,
+    ListCompanyUpdatesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/companies/{id}/updates",
+    ...options,
+  });
+
+/**
+ * Get one company post in full
+ *
+ * One post with its full plain-text content, by the id the list returned. Same visibility as the list; a post the tab would not show this viewer is a 404.
+ */
+export const getCompanyUpdate = <ThrowOnError extends boolean = false>(
+  options: Options<GetCompanyUpdateData, ThrowOnError>,
+): RequestResult<
+  GetCompanyUpdateResponses,
+  GetCompanyUpdateErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetCompanyUpdateResponses,
+    GetCompanyUpdateErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/companies/{id}/updates/{update_id}",
+    ...options,
+  });
+
+/**
+ * List a company's investor questions and answers
+ *
+ * The company page's Ask tab as data: the questions investors asked and the answers, as the
+ * tab lists them for this viewer (the same repository and visibility as the site). Like the tab,
+ * questions default to the current raise — those asked since it opened (`meta.questions_since`);
+ * `past_raises=true` includes every raise, which the site offers to any visitor because
+ * past-raise questions are public. `sort` is the tab's dropdown: `relevance` (default:
+ * highlighted, then answered, then most liked), `recent`, `upvoted`, `unanswered`. Text is plain.
+ * Questions and answers carry their id (`cmt_...`); the integer key never leaves the API.
+ * Answers are the founders' own words.
+ *
+ * `q` searches question and answer text (Postgres full text: quoted phrases and `-word` work;
+ * one- or two-word queries also prefix-match) and replaces the sort with match rank —
+ * `meta.sort` is then `search` and each result's `match` says whether its question or an
+ * answer matched. `unanswered_by_team=true` keeps only questions with no live answer from the
+ * company's team (the founder's queue; the `unanswered` sort merely orders by whether anyone
+ * replied).
+ *
+ */
+export const listCompanyQuestions = <ThrowOnError extends boolean = false>(
+  options: Options<ListCompanyQuestionsData, ThrowOnError>,
+): RequestResult<
+  ListCompanyQuestionsResponses,
+  ListCompanyQuestionsErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    ListCompanyQuestionsResponses,
+    ListCompanyQuestionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/companies/{id}/questions",
+    ...options,
+  });
+
+/**
+ * Search companies by name
+ *
+ * The wefunder.com search bar, companies only. Same Algolia request, same result ordering,
+ * and same page size as the site's top bar, so the results are what a visitor typing the
+ * same text would see, in that order — companies raising now and companies funded in the
+ * past, whether or not they appear on `/explore`. The order is the site's search order
+ * (match quality first, then the site's tie-breaks); nothing here recommends.
+ *
+ * Each result carries the company's `co_` id for `GET /companies/{id}`. With `read:explore`
+ * the accreditation gate matches the authorizing user (an accredited viewer sees the
+ * accredited-only companies the site would show them); with `read:public` it is the
+ * anonymous view.
+ *
+ */
+export const searchCompanies = <ThrowOnError extends boolean = false>(
+  options: Options<SearchCompaniesData, ThrowOnError>,
+): RequestResult<
+  SearchCompaniesResponses,
+  SearchCompaniesErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    SearchCompaniesResponses,
+    SearchCompaniesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/companies/search",
+    ...options,
+  });
+
+/**
+ * Get a company page
+ *
+ * The company page behind an offering, as structured data — the "click a company" step after
+ * `/explore`. Addressed by the `co_...` id every offering carries in `company.id`.
+ *
+ * Keeps apart the three raised numbers the page shows and readers conflate:
+ * `current_raise.amount_raised` (this campaign's live rounds combined, on Wefunder),
+ * `past_rounds[]` (prior rounds the page lists, each tagged `source: wefunder` for rounds
+ * observed here or `reported` for founder-disclosed off-platform rounds), and
+ * `totals.profile_total_raised` (the number on the page's ticker bar). Every figure comes
+ * from the same policy the page uses, so the API never disagrees with the site.
+ *
+ * **Who has a page.** Every company whose profile wefunder.com lists publicly — the same set
+ * the site's search bar returns (published, not invite-only, searchable or with a live Form C;
+ * accredited-only companies need an accredited viewer) — plus the `/explore` set. A funded
+ * company, or one the viewer may see no round of, renders with `raising: false` and
+ * `current_raise: null`; its history is in `wefunder_rounds`. **Logged-in view
+ * (`read:explore`)** additionally covers the vault / syndicate-led companies the site shows an
+ * accredited viewer, and the round described is the one the page would show that viewer. A
+ * valid id for a company outside the viewer's set is a `404`, never a partial payload.
+ *
+ */
+export const getCompany = <ThrowOnError extends boolean = false>(
+  options: Options<GetCompanyData, ThrowOnError>,
+): RequestResult<GetCompanyResponses, GetCompanyErrors, ThrowOnError> =>
+  (options.client ?? client).get<
+    GetCompanyResponses,
+    GetCompanyErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/companies/{id}",
     ...options,
   });
 
@@ -268,19 +614,134 @@ export const getCurrentUser = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * List user investments
+ * List the companies you edit
  *
- * Retrieves a paginated list of all investments made by the authenticated user. Each investment
- * includes details about the amount invested, the company, investment date, and current status.
+ * The companies the authenticated user is a founder or team member of — precisely the
+ * companies the founder-scoped endpoints under `/companies/{company_id}/...` (dashboard,
+ * investors, fundraises) will accept. Anyone else's company returns 403 there, so call this
+ * first to learn which `co_` ids you hold. Not paginated.
  *
- * Use this endpoint to:
- * - Display a user's investment portfolio
- * - Track investment history and performance
- * - Build custom reporting and analytics
+ * `raising` is true when the company has a round currently accepting investments or
+ * reservations. `roles` are the user's roles on the company (`founder`, `employee`, ...).
  *
- * The list is ordered by investment date (newest first) and supports cursor-based pagination
- * for efficient iteration through large portfolios. Each investment object includes the
- * campaign details and current valuation information.
+ */
+export const listMyCompanies = <ThrowOnError extends boolean = false>(
+  options?: Options<ListMyCompaniesData, ThrowOnError>,
+): RequestResult<
+  ListMyCompaniesResponses,
+  ListMyCompaniesErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    ListMyCompaniesResponses,
+    ListMyCompaniesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/users/me/companies",
+    ...options,
+  });
+
+/**
+ * List the companies you follow
+ *
+ * The authenticated user's watchlist — the companies they follow on wefunder.com (the same
+ * rows the site's Follow button writes), newest first. Each entry is in the search-result
+ * shape (`co_` id, name, tagline, URL, logo, `raising`, `profile_available`) plus
+ * `followed_at`. The list owner sees every company they follow.
+ *
+ */
+export const listFollowedCompanies = <ThrowOnError extends boolean = false>(
+  options?: Options<ListFollowedCompaniesData, ThrowOnError>,
+): RequestResult<
+  ListFollowedCompaniesResponses,
+  ListFollowedCompaniesErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    ListFollowedCompaniesResponses,
+    ListFollowedCompaniesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/users/me/follows",
+    ...options,
+  });
+
+/**
+ * Unfollow a company
+ *
+ * Unfollow the company for the authenticated user. Idempotent (`changed` is false when they were not following it). No visibility gate: a follow you hold is always undoable, even for a company since hidden. Requires `write:follows`.
+ */
+export const unfollowCompany = <ThrowOnError extends boolean = false>(
+  options: Options<UnfollowCompanyData, ThrowOnError>,
+): RequestResult<
+  UnfollowCompanyResponses,
+  UnfollowCompanyErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).delete<
+    UnfollowCompanyResponses,
+    UnfollowCompanyErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/users/me/follows/{company_id}",
+    ...options,
+  });
+
+/**
+ * Follow a company
+ *
+ * Follow the company for the authenticated user — exactly what pressing Follow on its
+ * Wefunder page does, side effects included (the company counts the user as a follower and
+ * may be notified; the user receives the company's updates). Idempotent: following an
+ * already-followed company returns `changed: false`. `404` for a company the site would not
+ * show this user. Requires `write:follows`, which the user grants explicitly; it is never
+ * implied by `read:mcp`.
+ *
+ */
+export const followCompany = <ThrowOnError extends boolean = false>(
+  options: Options<FollowCompanyData, ThrowOnError>,
+): RequestResult<FollowCompanyResponses, FollowCompanyErrors, ThrowOnError> =>
+  (options.client ?? client).put<
+    FollowCompanyResponses,
+    FollowCompanyErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/users/me/follows/{company_id}",
+    ...options,
+  });
+
+/**
+ * List or sync investments
+ *
+ * The investment records the token may see, served from **published** state
+ * (docs: *Investments: list, sync, retrieve*). The audience is the union of the companies
+ * the token's user edits (their founder-visible records) and the user's own investments
+ * (every applied record of theirs, whatever its status). Filters narrow within that
+ * audience; they never widen it.
+ *
+ * Three ways to call it:
+ * - **List** (no `cursor`, no `updated_since`): the current records, tombstones excluded,
+ * ordered by investment. Page with `meta.next_cursor` while `meta.has_more`; the final
+ * page's cursor is a sync cursor positioned at the moment the listing started.
+ * - **Sync by cursor**: only the records whose published state changed since the cursor,
+ * one record per investment, tombstones (`visible: false`, only `id`) included. Apply in
+ * `cursor` order; always store `meta.next_cursor`.
+ * - **Sync by time**: `updated_since=<ISO 8601>` is sugar for a cursor at the ledger position
+ * just before that time (with a 60 s safety margin). The response is a normal sync page,
+ * so continue with its `meta.next_cursor`.
+ *
+ * Records are eventually consistent (about ten minutes on the common paths); each carries
+ * `observed_at`. `GET /investments/{id}` returns the same shape derived now. Investor
+ * identity fields on other investors' records require `read:investors:pii`; a user always
+ * sees their own. Money is integer minor units plus `amounts.currency`.
+ *
+ * **410 Gone** means the cursor or `updated_since` predates the 90-day retention window:
+ * list again and replace your dataset. `status` cannot be combined with sync (a record
+ * leaving the status would never be delivered).
  *
  */
 export const listInvestments = <ThrowOnError extends boolean = false>(
@@ -297,6 +758,57 @@ export const listInvestments = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/investments",
+    ...options,
+  });
+
+/**
+ * Retrieve an investment (current)
+ *
+ * The same record shape as the list, derived **now** from the investment rather than read
+ * from published state, so an investor who just acted sees the change at once. Available
+ * for any investment in the token's audience: the user's own (any status) or a
+ * founder-visible investment on a company the user edits. `meta.published_matches` says
+ * whether the published record already agrees; the sync stream converges within its
+ * interval.
+ *
+ */
+export const getInvestment = <ThrowOnError extends boolean = false>(
+  options: Options<GetInvestmentData, ThrowOnError>,
+): RequestResult<GetInvestmentResponses, GetInvestmentErrors, ThrowOnError> =>
+  (options.client ?? client).get<
+    GetInvestmentResponses,
+    GetInvestmentErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/investments/{id}",
+    ...options,
+  });
+
+/**
+ * Investment totals for an offering
+ *
+ * Count and committed amount of the founder-visible published records for one offering,
+ * by status, from the same rows `GET /investments?offering_id=…` lists, so the two
+ * reconcile. These are **not** the public campaign figures (the progress bar has its own
+ * rules and sources); they are the sum of the records you can list. Requires the token's
+ * user to edit the offering's company.
+ *
+ */
+export const getOfferingStats = <ThrowOnError extends boolean = false>(
+  options: Options<GetOfferingStatsData, ThrowOnError>,
+): RequestResult<
+  GetOfferingStatsResponses,
+  GetOfferingStatsErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetOfferingStatsResponses,
+    GetOfferingStatsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/offerings/{offering_id}/stats",
     ...options,
   });
 
@@ -996,6 +1508,34 @@ export const finalizeSyndicateDeal = <ThrowOnError extends boolean = false>(
   });
 
 /**
+ * Preview an intent without proposing it
+ *
+ * Runs every check `POST /intents` runs — the action's feature flag, resource type and id,
+ * token binding, who may propose, and the handler's own validation — and returns what the
+ * reviewer would read, without minting anything. The draft step for agents: admitted by any
+ * proposing scope **or** `read:explore`, and the action's own scope is not required, so a user
+ * can shape the text before granting the write permission. Same request body as `POST /intents`
+ * (without `idempotency_key`). Errors are the same as `POST /intents` would give.
+ *
+ */
+export const previewIntent = <ThrowOnError extends boolean = false>(
+  options: Options<PreviewIntentData, ThrowOnError>,
+): RequestResult<PreviewIntentResponses, PreviewIntentErrors, ThrowOnError> =>
+  (options.client ?? client).post<
+    PreviewIntentResponses,
+    PreviewIntentErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/intents/preview",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+/**
  * List intents
  *
  * List intents created by the current token, optionally filtered by status or resource.
@@ -1021,6 +1561,23 @@ export const listIntents = <ThrowOnError extends boolean = false>(
  *
  * The entity that proposes an intent can never approve it. Approval always happens
  * on Wefunder's UI by a user with permission on the resource.
+ *
+ * Each action names the scope that may propose it and the resource type it targets
+ * (`syndicates.*` → `write:syndicates` on a syndicate; `comments.create` → `write:comments`
+ * on a `Company`). The token must hold that action's scope; holding another proposing scope
+ * is not enough (403 `insufficient_scope`).
+ *
+ * `comments.create` posts a question on a company's Ask tab, or an answer to one, as the
+ * requesting user once they approve on wefunder.com. `resource_id` is the company (`co_...`);
+ * `params` is `{ target_type: "company" | "comment", target: "co_..." | "cmt_...", body,
+ * disclosure_key? }` (`disclosure_key` ∈ investor, stockholder, promoter, financial_stakeholder).
+ * Who may post is the site's own rule: anyone the page is available to may ask (unless the
+ * company has closed questions); only the company's team may answer. Only the requester can
+ * approve. 20 proposals per user per day (429).
+ *
+ * An `idempotency_key` names one operation. Reusing it for the same operation returns the
+ * existing intent (200) while that intent is pending, approved, executing, or executed;
+ * reusing it for a different action, resource, or params is a 409 `idempotency_conflict`.
  *
  * See [Intents documentation](/concepts/intents) for the full pattern.
  *
@@ -1197,6 +1754,379 @@ export const listAttributedInvestments = <ThrowOnError extends boolean = false>(
     security: [{ scheme: "bearer", type: "http" }],
     url: "/campaigns/{campaign_id}/attribution/investments",
     ...options,
+  });
+
+/**
+ * List installations of your app
+ *
+ * Where the calling application is installed. Someone who manages the app's organization sees
+ * every install; anyone else sees the installs they made or could revoke. Revoked installs stay
+ * listed for 30 days.
+ *
+ */
+export const listInstallations = <ThrowOnError extends boolean = false>(
+  options?: Options<ListInstallationsData, ThrowOnError>,
+): RequestResult<
+  ListInstallationsResponses,
+  ListInstallationsErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    ListInstallationsResponses,
+    ListInstallationsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/installations",
+    ...options,
+  });
+
+/**
+ * Install your app on a company or syndicate
+ *
+ * Installs the calling application on a company or syndicate the token's user can edit (or, for a
+ * syndicate, manages), and mints the **company-owned token** the install stands for. The token
+ * appears in this response only. Requires a token authorized by a user.
+ *
+ * The install is granted at the caller's tier (founder, admin or editor for a company). An
+ * editor-tier install carries read scopes only; write scopes in `scopes` are dropped. Installing
+ * on a company outside your own organization requires the app to be approved.
+ *
+ */
+export const createInstallation = <ThrowOnError extends boolean = false>(
+  options: Options<CreateInstallationData, ThrowOnError>,
+): RequestResult<
+  CreateInstallationResponses,
+  CreateInstallationErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    CreateInstallationResponses,
+    CreateInstallationErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/installations",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+/**
+ * List where you can install your app
+ *
+ * Companies the token's user can edit and syndicates they manage, with the tier an install would
+ * be granted at and the current install if one exists. Requires a token authorized by a user.
+ *
+ */
+export const listEligibleInstallTargets = <
+  ThrowOnError extends boolean = false,
+>(
+  options?: Options<ListEligibleInstallTargetsData, ThrowOnError>,
+): RequestResult<
+  ListEligibleInstallTargetsResponses,
+  ListEligibleInstallTargetsErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    ListEligibleInstallTargetsResponses,
+    ListEligibleInstallTargetsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/installations/eligible",
+    ...options,
+  });
+
+/**
+ * Revoke an installation
+ *
+ * Revokes the install and every token issued for it. Requires a token authorized by a user who
+ * can edit the company (or manages the syndicate), or who administers the app's organization.
+ *
+ */
+export const revokeInstallation = <ThrowOnError extends boolean = false>(
+  options: Options<RevokeInstallationData, ThrowOnError>,
+): RequestResult<
+  RevokeInstallationResponses,
+  RevokeInstallationErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).delete<
+    RevokeInstallationResponses,
+    RevokeInstallationErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/installations/{external_id}",
+    ...options,
+  });
+
+/**
+ * Retrieve an installation
+ */
+export const getInstallation = <ThrowOnError extends boolean = false>(
+  options: Options<GetInstallationData, ThrowOnError>,
+): RequestResult<
+  GetInstallationResponses,
+  GetInstallationErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetInstallationResponses,
+    GetInstallationErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/installations/{external_id}",
+    ...options,
+  });
+
+/**
+ * Mint a token for an installation
+ *
+ * Mints another company-owned token for an active install — for example one a founder made through
+ * the install link. Scopes default to the install's grant and can only narrow it. The token appears
+ * in this response only. Requires a token authorized by a user who installed it, could revoke it,
+ * or manages the app's organization.
+ *
+ */
+export const createInstallationToken = <ThrowOnError extends boolean = false>(
+  options: Options<CreateInstallationTokenData, ThrowOnError>,
+): RequestResult<
+  CreateInstallationTokenResponses,
+  CreateInstallationTokenErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    CreateInstallationTokenResponses,
+    CreateInstallationTokenErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/installations/{external_id}/tokens",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+/**
+ * List webhook endpoints
+ *
+ * Your application's webhook endpoints. The signing secret is never included. Requires an
+ * owner, admin, or developer role in the application's organization.
+ *
+ */
+export const listWebhookEndpoints = <ThrowOnError extends boolean = false>(
+  options?: Options<ListWebhookEndpointsData, ThrowOnError>,
+): RequestResult<
+  ListWebhookEndpointsResponses,
+  ListWebhookEndpointsErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    ListWebhookEndpointsResponses,
+    ListWebhookEndpointsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/webhook_endpoints",
+    ...options,
+  });
+
+/**
+ * Create a webhook endpoint
+ *
+ * Registers an endpoint for your application. The response is the only time the
+ * signing `secret` is returned; store it to verify signatures. Requires an
+ * owner, admin, or developer role in the application's organization.
+ *
+ * On the sandbox API this returns `403 manage_endpoints_on_live_api`: create test
+ * endpoints through the live API with `mode: "test"`, and they are mirrored into sandbox.
+ *
+ */
+export const createWebhookEndpoint = <ThrowOnError extends boolean = false>(
+  options: Options<CreateWebhookEndpointData, ThrowOnError>,
+): RequestResult<
+  CreateWebhookEndpointResponses,
+  CreateWebhookEndpointErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    CreateWebhookEndpointResponses,
+    CreateWebhookEndpointErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/webhook_endpoints",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+/**
+ * Remove a webhook endpoint
+ *
+ * Stops deliveries immediately. The endpoint is retained as removed and cannot be restored.
+ * Returns `403 manage_endpoints_on_live_api` on the sandbox API; use the live API.
+ *
+ */
+export const deleteWebhookEndpoint = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteWebhookEndpointData, ThrowOnError>,
+): RequestResult<
+  DeleteWebhookEndpointResponses,
+  DeleteWebhookEndpointErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).delete<
+    DeleteWebhookEndpointResponses,
+    DeleteWebhookEndpointErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/webhook_endpoints/{external_id}",
+    ...options,
+  });
+
+/**
+ * Get a webhook endpoint
+ *
+ * Requires an owner, admin, or developer role in the application's organization.
+ */
+export const getWebhookEndpoint = <ThrowOnError extends boolean = false>(
+  options: Options<GetWebhookEndpointData, ThrowOnError>,
+): RequestResult<
+  GetWebhookEndpointResponses,
+  GetWebhookEndpointErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetWebhookEndpointResponses,
+    GetWebhookEndpointErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/webhook_endpoints/{external_id}",
+    ...options,
+  });
+
+/**
+ * Update a webhook endpoint
+ *
+ * `events` replaces the subscription list wholesale (no merge); omit it to leave it
+ * unchanged. An endpoint must subscribe to at least one event, so `[]` and `null` are
+ * rejected; delete the endpoint to stop all deliveries. Requires an org management role.
+ * Returns `403 manage_endpoints_on_live_api` on the sandbox API; use the live API.
+ *
+ */
+export const updateWebhookEndpoint = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateWebhookEndpointData, ThrowOnError>,
+): RequestResult<
+  UpdateWebhookEndpointResponses,
+  UpdateWebhookEndpointErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).patch<
+    UpdateWebhookEndpointResponses,
+    UpdateWebhookEndpointErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/webhook_endpoints/{external_id}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+/**
+ * Rotate the signing secret
+ *
+ * Returns a new signing secret (shown once). The previous secret keeps signing for a
+ * 24h overlap window, so deliveries carry a `v1` for both; verify against either.
+ * Returns `403 manage_endpoints_on_live_api` on the sandbox API; use the live API.
+ *
+ */
+export const rotateWebhookEndpointSecret = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<RotateWebhookEndpointSecretData, ThrowOnError>,
+): RequestResult<
+  RotateWebhookEndpointSecretResponses,
+  RotateWebhookEndpointSecretErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    RotateWebhookEndpointSecretResponses,
+    RotateWebhookEndpointSecretErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/webhook_endpoints/{external_id}/rotate_secret",
+    ...options,
+  });
+
+/**
+ * Re-enable a disabled endpoint
+ *
+ * Recovery after auto-disable. Idempotent. Requires an org management role on the live API.
+ * Also allowed on the sandbox API for an endpoint sandbox itself disabled (sandbox runs its own
+ * health checks on its mirror of a test endpoint), authorized by the caller's realm.
+ *
+ */
+export const reenableWebhookEndpoint = <ThrowOnError extends boolean = false>(
+  options: Options<ReenableWebhookEndpointData, ThrowOnError>,
+): RequestResult<
+  ReenableWebhookEndpointResponses,
+  ReenableWebhookEndpointErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    ReenableWebhookEndpointResponses,
+    ReenableWebhookEndpointErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/webhook_endpoints/{external_id}/reenable",
+    ...options,
+  });
+
+/**
+ * Send a test event
+ *
+ * Sends a real, signed example event (fake values) using the production envelope,
+ * signature scheme, and transport, and reports the outcome inline. Does not affect
+ * delivery health. Rate-limited to 10 per minute per endpoint. Investor email appears
+ * in the example only if your application holds `read:investors:pii`, matching what
+ * real deliveries can carry.
+ *
+ */
+export const testWebhookEndpoint = <ThrowOnError extends boolean = false>(
+  options: Options<TestWebhookEndpointData, ThrowOnError>,
+): RequestResult<
+  TestWebhookEndpointResponses,
+  TestWebhookEndpointErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    TestWebhookEndpointResponses,
+    TestWebhookEndpointErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/webhook_endpoints/{external_id}/test",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
   });
 
 /**

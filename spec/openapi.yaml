@@ -46,13 +46,27 @@ paths:
         **one offering per company**. An "offering" is a fundraise, addressed by its id
         (`ofr_...`).
 
-        This is a public, read-only endpoint backed by the `read:public` scope. It is reachable
-        with either a server-side (client_credentials) token or a user access token carrying
-        `read:public`. Private rounds (e.g. Reg D 506(b)) are never listed, and low-traction or
-        unapproved companies are excluded — exactly as they are on the website.
+        **Public view (`read:public`).** Reachable with either a server-side (client_credentials)
+        token or a user access token. Private rounds (e.g. Reg D 506(b)) are never listed, and
+        low-traction or unapproved companies are excluded — exactly as they are on the website
+        for a logged-out visitor.
+
+        **Logged-in view (`read:explore`).** A user access token carrying `read:explore` gets
+        what *that user* sees on wefunder.com/explore: the public offerings plus any the user
+        qualifies for (accredited-only / Vault deals, invited private rounds), each checked
+        against the same visibility policy the website applies. The response is a strict
+        superset of the public one — same fields and ids — with two extra attributes,
+        `publicly_visible` and `invested`, and `meta.personalized: true`. A server-side key can
+        never hold `read:explore`; a token with `read:explore` but no resolvable user gets the
+        public view.
 
         Order with `sort` (default: most raised); paginate with `cursor`. `meta.total_count` is
-        the number of offerings across all pages.
+        the number of offerings across all pages, after filters.
+
+        **Filters** are objective, per-offering terms — exemption family, security type,
+        TTW vs. live, minimum investment ceiling, close date, amount raised floor. The response
+        echoes the applied set in `meta.filters`. An out-of-vocabulary value is a `400` naming
+        the accepted values. There are deliberately no relevance, quality, or ranking criteria.
 
         Use this endpoint to:
         - Discover and monitor active deals
@@ -61,6 +75,8 @@ paths:
       security:
         - bearerAuth:
             - read:public
+        - bearerAuth:
+            - read:explore
       parameters:
         - $ref: '#/components/parameters/cursor'
         - name: sort
@@ -80,6 +96,146 @@ paths:
               - most_investors
             default: most_raised
           example: most_raised
+        - name: exemption
+          in: query
+          description: Only offerings under this SEC exemption family. Reg CF and Reg D are the supported public filters.
+          schema:
+            type: string
+            enum:
+              - reg_cf
+              - reg_d
+          example: reg_cf
+        - name: security
+          in: query
+          description: Only offerings issuing this kind of security — the `security.type` value on results.
+          schema:
+            type: string
+            enum:
+              - safe
+              - equity
+              - convertible_note
+              - revenue_share
+              - debt
+              - fund
+              - other
+          example: safe
+        - name: testing_the_waters
+          in: query
+          description: '`false` — only live rounds accepting investments; `true` — only Testing-the-Waters rounds collecting non-binding reservations.'
+          schema:
+            type: boolean
+          example: false
+        - name: max_min_investment
+          in: query
+          description: Only offerings whose minimum investment is at most this amount (USD).
+          schema:
+            type: number
+          example: 100
+        - name: closing_before
+          in: query
+          description: Only offerings whose funding close date is on or before this date (ISO 8601). Offerings with no close date are excluded.
+          schema:
+            type: string
+            format: date
+          example: '2026-12-31'
+        - name: min_amount_raised
+          in: query
+          description: Only offerings that have raised at least this amount so far (USD).
+          schema:
+            type: number
+          example: 250000
+        - name: industry
+          in: query
+          description: |
+            Only companies tagged with any of these industries — the curated tags the wefunder.com
+            explore page filters by (see each offering's `industries`). One value or a comma-separated
+            list; unknown values are a 400 listing the vocabulary. Objective facets, not a ranking.
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+              enum:
+                - ar_and_vr
+                - agriculture_and_agtech
+                - artificial_intelligence
+                - biotech
+                - blockchain_and_web3
+                - edtech
+                - energy
+                - fintech_and_finance
+                - food_tech
+                - games
+                - health_and_fitness
+                - healthcare
+                - manufacturing
+                - mobile_apps
+                - robotics
+                - science_and_r_and_d
+                - transportation
+                - travel_and_tourism
+                - bars_and_clubs
+                - brewery
+                - cafe_and_food_truck
+                - events_and_festivals
+                - education
+                - distillery_and_vineyards
+                - fashion
+                - film
+                - media
+                - music
+                - restaurant
+                - sports
+                - real_estate
+                - pets
+                - recreation
+                - infrastructure_and_construction
+                - childcare
+                - sustainability
+                - sports_tech
+                - home_tech
+                - devtools
+                - clean_tech
+                - beauty
+                - entertainment
+                - technology
+                - brick_and_mortar
+                - food_and_beverage
+                - climate_change
+                - alcohol_and_vice
+                - consumer_goods
+                - hardware
+                - moonshots
+          example: robotics,hardware
+        - name: business_model
+          in: query
+          description: Only companies with any of these business models (see each offering's `business_models`). One value or a comma-separated list.
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+              enum:
+                - b2b
+                - b2c
+                - subscription
+                - saas
+                - service
+                - marketplace
+                - ecommerce
+                - retail
+          example: b2b
+        - name: followed
+          in: query
+          description: |
+            **Logged-in view only** (`read:explore` with a user). `true` — only companies the
+            authorizing user follows on wefunder.com (their watchlist); `false` — only companies
+            they do not follow. A 400 on the public view, which has no user to filter by.
+          schema:
+            type: boolean
+          example: true
       responses:
         '200':
           description: Successful response
@@ -87,6 +243,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OfferingListEnvelope'
+        '400':
+          description: A filter value is out of vocabulary or malformed; `error.message` names the accepted values.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '429':
@@ -111,14 +269,19 @@ paths:
         - Explore
       summary: Get a public offering
       description: |
-        Retrieves a single public offering by its id (`ofr_...`).
+        Retrieves a single offering by its id (`ofr_...`).
 
-        A valid id for a non-public offering (e.g. a private Reg D 506(b) round) returns `404` —
-        having an id does not make an offering publicly resolvable.
+        With `read:public`, a valid id for a non-public offering (e.g. a private Reg D 506(b)
+        round) returns `404` — having an id does not make an offering publicly resolvable. With
+        `read:explore` on a user access token, the offering resolves if *that user* may see it on
+        wefunder.com (e.g. an accredited-only or invited round), and the response gains
+        `publicly_visible` and `invested`.
       operationId: getOffering
       security:
         - bearerAuth:
             - read:public
+        - bearerAuth:
+            - read:explore
       parameters:
         - name: external_id
           in: path
@@ -146,6 +309,429 @@ paths:
           source: |-
             const offering = await wf.offerings.get("ofr_QfmTyP8qjfYAvkEgREyL3kLf");
             console.log(offering.attributes?.company_name, offering.attributes?.state);
+  /companies/{id}/disclosures:
+    get:
+      tags:
+        - Explore
+      summary: Get a company's public Form C disclosures
+      description: |
+        The Details tab of the company's Wefunder page as structured data — the company's own
+        Form C disclosures, section for section: financial statements for the fiscal years on
+        file, the page's ratios, the founder's current-position disclosure (cash on hand, monthly
+        revenue / costs / burn), the financial-condition narrative, document links, risks, use of
+        funds, directors and officers, 20%+ holders, capital structure, prior offerings, outstanding
+        notes and debts, and related-party transactions.
+
+        Same "who has a page" rule as `GET /companies/{id}`. The round read is the page's own: the
+        display round for the viewer, swapped for its concurrent Reg CF sibling on a Reg D round,
+        and only when it is a Reg CF / ECSP round with a Form C. A company with no such round has
+        no details tab on the site and answers `404` with `error.type: no_disclosures` — distinct
+        from an unknown or hidden company. A section the company hides on the site is `null`.
+
+        Money is USD as decimal strings; ratios are percentages as decimal strings. Everything here
+        is the issuer's own disclosure, served as filed, not a Wefunder assessment.
+      operationId: getCompanyDisclosures
+      security:
+        - bearerAuth:
+            - read:public
+        - bearerAuth:
+            - read:explore
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: co_8Kd0aB3xQ9k2vF8mNp1zT5wY
+        - name: sections
+          in: query
+          description: |
+            Only these sections (`offering_id` and `filing` are always included). Omit for the whole
+            tab; a disclosure-heavy company runs to ~100 KB. Unknown names are a 400 listing the vocabulary.
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+              enum:
+                - business
+                - financial_statements
+                - ratios
+                - current_position
+                - financial_condition
+                - financial_statement_documents
+                - investment_documents
+                - risks
+                - use_of_funds
+                - directors
+                - officers
+                - voting_power
+                - capital_structure
+                - prior_offerings
+                - outstanding_notes
+                - outstanding_debts
+                - related_parties
+          example: financial_statements,ratios,current_position
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyDisclosuresEnvelope'
+        '400':
+          description: '`sections` names a section that does not exist.'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Unknown or hidden company (`error.type` = `not_found`), or no public Form C disclosures (`error.type` = `no_disclosures`).
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+  /companies/{id}/pitch:
+    get:
+      tags:
+        - Explore
+      summary: Get a company's pitch
+      description: |
+        The Overview tab's pitch as structured data: the story as ordered blocks (`heading`,
+        `paragraph`, `list`, `image`, `video`, `footnote`), plus the perk tiers of the round the page
+        shows the viewer. Images and embedded videos keep their place in the document with an absolute
+        URL, because founders publish perk tiers, stretch goals, timelines, and charts as pictures
+        (typically with no alt text) and a plain-text rendering would drop them.
+
+        What is parsed is what the page renders: the story passes through the site's own sanitizer
+        first, so an embed the page refuses (a host off its allowlist, a `javascript:` URL) is never
+        served here either. Same "who has a page" rule and round chooser as `GET /companies/{id}`.
+        A site-public company with no round the viewer may see still has a pitch (`perks: null`).
+        `perks.described_in_pitch` is a heuristic: true when the structured perk list is a placeholder
+        ("See investor overview page", or one identical sentence on every tier) and the real tiers are
+        in the story's images.
+
+        `authored_by` says who wrote the story: `company` (the issuer's own words and imagery, not a
+        Wefunder assessment) or `wefunder` (a Wefunder-prepared deal memo the company did not
+        participate in; `disclaimer` carries the page's notice). A pitch can run to ~70 KB; use
+        `sections` to ask for less.
+      operationId: getCompanyPitch
+      security:
+        - bearerAuth:
+            - read:public
+        - bearerAuth:
+            - read:explore
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: co_8Kd0aB3xQ9k2vF8mNp1zT5wY
+        - name: sections
+          in: query
+          description: |
+            Only these sections (`offering_id`, `title`, `url`, `authored_by`, and `disclaimer` are
+            always included). Omit for the whole pitch. Unknown names are a 400 listing the vocabulary.
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+              enum:
+                - story
+                - perks
+          example: perks
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyPitchEnvelope'
+        '400':
+          description: '`sections` names a section that does not exist.'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Unknown or hidden company.
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+  /companies/{id}/updates:
+    get:
+      tags:
+        - Explore
+      summary: List a company's posts
+      description: |
+        The company page's Posts tab as data: the published updates, notes, and spotlights the
+        viewer may see, pinned first then newest, with a plain-text excerpt each. With
+        `read:explore` the viewer is the authorizing user, so a follower or investor sees the
+        community- and investors-only posts the site shows them; with `read:public` it is the
+        anonymous view. Same query as the tab (`FeedItem.viewable_by`); investments, Q&A threads,
+        and investor quotes belong to other tabs and are not here. Fetch one post in full with
+        `GET /companies/{id}/updates/{update_id}`. Posts are the issuer's own words.
+      operationId: listCompanyUpdates
+      security:
+        - bearerAuth:
+            - read:public
+        - bearerAuth:
+            - read:explore
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: co_8Kd0aB3xQ9k2vF8mNp1zT5wY
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 50
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyUpdateListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Unknown company, or one the site does not show this viewer.
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+  /companies/{id}/updates/{update_id}:
+    get:
+      tags:
+        - Explore
+      summary: Get one company post in full
+      description: One post with its full plain-text content, by the id the list returned. Same visibility as the list; a post the tab would not show this viewer is a 404.
+      operationId: getCompanyUpdate
+      security:
+        - bearerAuth:
+            - read:public
+        - bearerAuth:
+            - read:explore
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: update_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyUpdateEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Unknown company or post, or one the site does not show this viewer.
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+  /companies/{id}/questions:
+    get:
+      tags:
+        - Explore
+      summary: List a company's investor questions and answers
+      description: |
+        The company page's Ask tab as data: the questions investors asked and the answers, as the
+        tab lists them for this viewer (the same repository and visibility as the site). Like the tab,
+        questions default to the current raise — those asked since it opened (`meta.questions_since`);
+        `past_raises=true` includes every raise, which the site offers to any visitor because
+        past-raise questions are public. `sort` is the tab's dropdown: `relevance` (default:
+        highlighted, then answered, then most liked), `recent`, `upvoted`, `unanswered`. Text is plain.
+        Questions and answers carry their id (`cmt_...`); the integer key never leaves the API.
+        Answers are the founders' own words.
+
+        `q` searches question and answer text (Postgres full text: quoted phrases and `-word` work;
+        one- or two-word queries also prefix-match) and replaces the sort with match rank —
+        `meta.sort` is then `search` and each result's `match` says whether its question or an
+        answer matched. `unanswered_by_team=true` keeps only questions with no live answer from the
+        company's team (the founder's queue; the `unanswered` sort merely orders by whether anyone
+        replied).
+      operationId: listCompanyQuestions
+      security:
+        - bearerAuth:
+            - read:public
+        - bearerAuth:
+            - read:explore
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: co_8Kd0aB3xQ9k2vF8mNp1zT5wY
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum:
+              - relevance
+              - recent
+              - upvoted
+              - unanswered
+            default: relevance
+        - name: past_raises
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: q
+          in: query
+          description: Full-text search over questions and answers. At most 200 bytes.
+          schema:
+            type: string
+            maxLength: 200
+        - name: unanswered_by_team
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 50
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyQuestionListEnvelope'
+        '400':
+          description: '`sort` is not one of the tab''s options, or `q` is over 200 bytes.'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Unknown company, or one the site does not show this viewer.
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+  /companies/search:
+    get:
+      tags:
+        - Companies
+      summary: Search companies by name
+      description: |
+        The wefunder.com search bar, companies only. Same Algolia request, same result ordering,
+        and same page size as the site's top bar, so the results are what a visitor typing the
+        same text would see, in that order — companies raising now and companies funded in the
+        past, whether or not they appear on `/explore`. The order is the site's search order
+        (match quality first, then the site's tie-breaks); nothing here recommends.
+
+        Each result carries the company's `co_` id for `GET /companies/{id}`. With `read:explore`
+        the accreditation gate matches the authorizing user (an accredited viewer sees the
+        accredited-only companies the site would show them); with `read:public` it is the
+        anonymous view.
+      operationId: searchCompanies
+      security:
+        - bearerAuth:
+            - read:public
+        - bearerAuth:
+            - read:explore
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: The company name, or part of it. At most 200 characters and 500 bytes.
+          schema:
+            type: string
+            maxLength: 200
+          example: acme
+        - name: limit
+          in: query
+          description: Maximum results, 1–20. Default 8, the same as the site.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 8
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanySearchResultListEnvelope'
+        '400':
+          description: '`q` is missing, blank, or over 200 characters / 500 bytes.'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: The token holds neither `read:public` nor `read:explore`.
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+        '503':
+          description: The search provider failed; retry. Not "no results".
+  /companies/{id}:
+    get:
+      tags:
+        - Explore
+      summary: Get a company page
+      description: |
+        The company page behind an offering, as structured data — the "click a company" step after
+        `/explore`. Addressed by the `co_...` id every offering carries in `company.id`.
+
+        Keeps apart the three raised numbers the page shows and readers conflate:
+        `current_raise.amount_raised` (this campaign's live rounds combined, on Wefunder),
+        `past_rounds[]` (prior rounds the page lists, each tagged `source: wefunder` for rounds
+        observed here or `reported` for founder-disclosed off-platform rounds), and
+        `totals.profile_total_raised` (the number on the page's ticker bar). Every figure comes
+        from the same policy the page uses, so the API never disagrees with the site.
+
+        **Who has a page.** Every company whose profile wefunder.com lists publicly — the same set
+        the site's search bar returns (published, not invite-only, searchable or with a live Form C;
+        accredited-only companies need an accredited viewer) — plus the `/explore` set. A funded
+        company, or one the viewer may see no round of, renders with `raising: false` and
+        `current_raise: null`; its history is in `wefunder_rounds`. **Logged-in view
+        (`read:explore`)** additionally covers the vault / syndicate-led companies the site shows an
+        accredited viewer, and the round described is the one the page would show that viewer. A
+        valid id for a company outside the viewer's set is a `404`, never a partial payload.
+      operationId: getCompany
+      security:
+        - bearerAuth:
+            - read:public
+        - bearerAuth:
+            - read:explore
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The company's id (`co_...`).
+          example: co_8Kd0aB3xQ9k2vF8mNp1zT5wY
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Unknown id, or a company the viewer may not see.
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
   /users/me:
     get:
       tags:
@@ -182,38 +768,246 @@ paths:
           source: |-
             const me = await wf.users.me();
             console.log("Logged in as", me.id);
-  /investments:
+  /users/me/companies:
     get:
       tags:
-        - Investments
-      summary: List user investments
+        - Users
+      summary: List the companies you edit
       description: |
-        Retrieves a paginated list of all investments made by the authenticated user. Each investment
-        includes details about the amount invested, the company, investment date, and current status.
+        The companies the authenticated user is a founder or team member of — precisely the
+        companies the founder-scoped endpoints under `/companies/{company_id}/...` (dashboard,
+        investors, fundraises) will accept. Anyone else's company returns 403 there, so call this
+        first to learn which `co_` ids you hold. Not paginated.
 
-        Use this endpoint to:
-        - Display a user's investment portfolio
-        - Track investment history and performance
-        - Build custom reporting and analytics
-
-        The list is ordered by investment date (newest first) and supports cursor-based pagination
-        for efficient iteration through large portfolios. Each investment object includes the
-        campaign details and current valuation information.
-      operationId: listInvestments
+        `raising` is true when the company has a round currently accepting investments or
+        reservations. `roles` are the user's roles on the company (`founder`, `employee`, ...).
+      operationId: listMyCompanies
       security:
         - bearerAuth:
-            - read:investments
-      parameters:
-        - $ref: '#/components/parameters/cursor'
+            - read:companies
       responses:
         '200':
           description: Successful response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/InvestmentListEnvelope'
+                $ref: '#/components/schemas/MyCompanyListEnvelope'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+  /users/me/follows:
+    get:
+      tags:
+        - Users
+      summary: List the companies you follow
+      description: |
+        The authenticated user's watchlist — the companies they follow on wefunder.com (the same
+        rows the site's Follow button writes), newest first. Each entry is in the search-result
+        shape (`co_` id, name, tagline, URL, logo, `raising`, `profile_available`) plus
+        `followed_at`. The list owner sees every company they follow.
+      operationId: listFollowedCompanies
+      security:
+        - bearerAuth:
+            - read:follows
+      parameters:
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 25
+            maximum: 100
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowedCompanyListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+  /users/me/follows/{company_id}:
+    put:
+      tags:
+        - Users
+      summary: Follow a company
+      description: |
+        Follow the company for the authenticated user — exactly what pressing Follow on its
+        Wefunder page does, side effects included (the company counts the user as a follower and
+        may be notified; the user receives the company's updates). Idempotent: following an
+        already-followed company returns `changed: false`. `404` for a company the site would not
+        show this user. Requires `write:follows`, which the user grants explicitly; it is never
+        implied by `read:mcp`.
+      operationId: followCompany
+      security:
+        - bearerAuth:
+            - write:follows
+      parameters:
+        - name: company_id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: co_8Kd0aB3xQ9k2vF8mNp1zT5wY
+      responses:
+        '200':
+          description: The follow state after the call.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowStateEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: The token does not hold `write:follows`.
+        '404':
+          description: Unknown company, or one the site does not show this user.
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+    delete:
+      tags:
+        - Users
+      summary: Unfollow a company
+      description: 'Unfollow the company for the authenticated user. Idempotent (`changed` is false when they were not following it). No visibility gate: a follow you hold is always undoable, even for a company since hidden. Requires `write:follows`.'
+      operationId: unfollowCompany
+      security:
+        - bearerAuth:
+            - write:follows
+      parameters:
+        - name: company_id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: co_8Kd0aB3xQ9k2vF8mNp1zT5wY
+      responses:
+        '200':
+          description: The follow state after the call.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowStateEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: The token does not hold `write:follows`.
+        '404':
+          description: Unknown company.
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+  /investments:
+    get:
+      tags:
+        - Investments
+      summary: List or sync investments
+      description: |
+        The investment records the token may see, served from **published** state
+        (docs: *Investments: list, sync, retrieve*). The audience is the union of the companies
+        the token's user edits (their founder-visible records) and the user's own investments
+        (every applied record of theirs, whatever its status). Filters narrow within that
+        audience; they never widen it.
+
+        Three ways to call it:
+        - **List** (no `cursor`, no `updated_since`): the current records, tombstones excluded,
+          ordered by investment. Page with `meta.next_cursor` while `meta.has_more`; the final
+          page's cursor is a sync cursor positioned at the moment the listing started.
+        - **Sync by cursor**: only the records whose published state changed since the cursor,
+          one record per investment, tombstones (`visible: false`, only `id`) included. Apply in
+          `cursor` order; always store `meta.next_cursor`.
+        - **Sync by time**: `updated_since=<ISO 8601>` is sugar for a cursor at the ledger position
+          just before that time (with a 60 s safety margin). The response is a normal sync page,
+          so continue with its `meta.next_cursor`.
+
+        Records are eventually consistent (about ten minutes on the common paths); each carries
+        `observed_at`. `GET /investments/{id}` returns the same shape derived now. Investor
+        identity fields on other investors' records require `read:investors:pii`; a user always
+        sees their own. Money is integer minor units plus `amounts.currency`.
+
+        **410 Gone** means the cursor or `updated_since` predates the 90-day retention window:
+        list again and replace your dataset. `status` cannot be combined with sync (a record
+        leaving the status would never be delivered).
+      operationId: listInvestments
+      security:
+        - bearerAuth:
+            - read:investments
+      parameters:
+        - name: company_id
+          in: query
+          required: false
+          description: Company external id (`co_…`).
+          schema:
+            type: string
+        - name: offering_id
+          in: query
+          required: false
+          description: |
+            Offering external id (`ofr_…`). In sync mode an investment that moved to another
+            offering is delivered once more as a tombstone under this filter.
+          schema:
+            type: string
+        - name: investor_id
+          in: query
+          required: false
+          description: Investor external id (`usr_…`).
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          description: List mode only.
+          schema:
+            type: string
+            enum:
+              - reserved
+              - active
+              - executed
+              - canceled
+              - converted
+        - name: updated_since
+          in: query
+          required: false
+          description: ISO 8601 timestamp; switches to sync mode. Mutually exclusive with `cursor` (cursor wins).
+          schema:
+            type: string
+            format: date-time
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque cursor from a previous response's `meta.next_cursor`.
+          schema:
+            type: string
+        - name: per_page
+          in: query
+          required: false
+          description: Records per page, 1–100 (default 25). Sync pages count distinct investments.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 25
+      responses:
+        '200':
+          description: A page of records.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvestmentListEnvelope'
+        '400':
+          description: Malformed cursor or `updated_since`, unknown `status`, or `status` combined with sync.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Unknown `company_id`, `offering_id` or `investor_id`.
+        '410':
+          description: |
+            The cursor or `updated_since` is older than the retention window. List again (no
+            cursor) and replace your stored records from the result.
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
       x-codeSamples:
@@ -228,6 +1022,79 @@ paths:
             // Or grab one page with its meta (next_cursor, etc.):
             const page = await wf.investments.list();
             console.log(page.data?.length, page.meta?.next_cursor);
+  /investments/{id}:
+    get:
+      tags:
+        - Investments
+      summary: Retrieve an investment (current)
+      description: |
+        The same record shape as the list, derived **now** from the investment rather than read
+        from published state, so an investor who just acted sees the change at once. Available
+        for any investment in the token's audience: the user's own (any status) or a
+        founder-visible investment on a company the user edits. `meta.published_matches` says
+        whether the published record already agrees; the sync stream converges within its
+        interval.
+      operationId: getInvestment
+      security:
+        - bearerAuth:
+            - read:investments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Investment external id (`inv_…`).
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The current record.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvestmentEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not found, not in the token's audience, or not visible to it.
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+  /offerings/{offering_id}/stats:
+    get:
+      tags:
+        - Investments
+      summary: Investment totals for an offering
+      description: |
+        Count and committed amount of the founder-visible published records for one offering,
+        by status, from the same rows `GET /investments?offering_id=…` lists, so the two
+        reconcile. These are **not** the public campaign figures (the progress bar has its own
+        rules and sources); they are the sum of the records you can list. Requires the token's
+        user to edit the offering's company.
+      operationId: getOfferingStats
+      security:
+        - bearerAuth:
+            - read:investments
+      parameters:
+        - name: offering_id
+          in: path
+          required: true
+          description: Offering external id (`ofr_…`).
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Totals by status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfferingStatsEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: The token's user does not edit the offering's company.
+        '404':
+          description: Unknown offering.
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
   /portfolio:
     get:
       tags:
@@ -1305,6 +2172,62 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /intents/preview:
+    post:
+      tags:
+        - Intents
+      summary: Preview an intent without proposing it
+      description: |
+        Runs every check `POST /intents` runs — the action's feature flag, resource type and id,
+        token binding, who may propose, and the handler's own validation — and returns what the
+        reviewer would read, without minting anything. The draft step for agents: admitted by any
+        proposing scope **or** `read:explore`, and the action's own scope is not required, so a user
+        can shape the text before granting the write permission. Same request body as `POST /intents`
+        (without `idempotency_key`). Errors are the same as `POST /intents` would give.
+      operationId: previewIntent
+      security:
+        - bearerAuth:
+            - read:explore
+        - bearerAuth:
+            - write:syndicates
+        - bearerAuth:
+            - write:comments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - action_name
+                - resource_type
+                - resource_id
+              properties:
+                action_name:
+                  type: string
+                resource_type:
+                  type: string
+                resource_id:
+                  type: string
+                params:
+                  type: object
+      responses:
+        '200':
+          description: The proposal would be accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntentPreviewEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          description: The handler refused it; `error.message` is the reason.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /intents:
     post:
       tags:
@@ -1316,6 +2239,23 @@ paths:
 
         The entity that proposes an intent can never approve it. Approval always happens
         on Wefunder's UI by a user with permission on the resource.
+
+        Each action names the scope that may propose it and the resource type it targets
+        (`syndicates.*` → `write:syndicates` on a syndicate; `comments.create` → `write:comments`
+        on a `Company`). The token must hold that action's scope; holding another proposing scope
+        is not enough (403 `insufficient_scope`).
+
+        `comments.create` posts a question on a company's Ask tab, or an answer to one, as the
+        requesting user once they approve on wefunder.com. `resource_id` is the company (`co_...`);
+        `params` is `{ target_type: "company" | "comment", target: "co_..." | "cmt_...", body,
+        disclosure_key? }` (`disclosure_key` ∈ investor, stockholder, promoter, financial_stakeholder).
+        Who may post is the site's own rule: anyone the page is available to may ask (unless the
+        company has closed questions); only the company's team may answer. Only the requester can
+        approve. 20 proposals per user per day (429).
+
+        An `idempotency_key` names one operation. Reusing it for the same operation returns the
+        existing intent (200) while that intent is pending, approved, executing, or executed;
+        reusing it for a different action, resource, or params is a 409 `idempotency_conflict`.
 
         See [Intents documentation](/concepts/intents) for the full pattern.
       operationId: createIntent
@@ -1343,13 +2283,14 @@ paths:
                     - syndicates.publish
                     - syndicates.remove_member
                     - syndicates.delete_draft
+                    - comments.create
                 resource_type:
                   type: string
                   example: Club
-                  description: The model class name of the resource
+                  description: The resource type the action targets, as the action table names it; the example is the syndicate type.
                 resource_id:
                   type: string
-                  description: The syndicate's id (`syn_...`).
+                  description: The resource's id in the API's vocabulary — the syndicate's `syn_...` for a `syndicates.*` action.
                   example: syn_aB3xQ9k2vF8mNp1zT5wY7Qc4
                 params:
                   type: object
@@ -1358,13 +2299,19 @@ paths:
                     fundraise_id: 99
                 idempotency_key:
                   type: string
-                  description: Client-provided deduplication key. If a pending/executed intent exists with this key, the existing intent is returned.
+                  description: Client-provided key naming this one operation. While an intent with this key is pending, approved, executing, or executed, the same operation returns it (200); a different operation under the same key is a 409.
                   example: close-acme-series-a
                 requested_by_agent:
                   type: string
                   description: Human-readable name of the agent proposing the action
                   example: Claude via MCP
       responses:
+        '200':
+          description: Idempotent replay — the existing intent for this key and operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntentEnvelope'
         '201':
           description: Intent created
           content:
@@ -1376,11 +2323,11 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '409':
-          description: Duplicate idempotency key (returns existing intent)
+          description: '`idempotency_conflict` — the key was already used for a different operation. Nothing was minted.'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/IntentEnvelope'
+                $ref: '#/components/schemas/Error'
         '422':
           description: Invalid action or parameters
           content:
@@ -1481,8 +2428,8 @@ paths:
           required: true
           schema:
             type: string
-          description: Intent UUID
-          example: intent_abc123
+          description: The intent's id (`int_...`), as returned when the intent was minted (`data.id` / `meta.*_intent.id`). The legacy UUID form is still accepted.
+          example: int_aB3xQ9k2vF8mNp1zT5wY7Qc4
       responses:
         '200':
           description: Successful response
@@ -1785,6 +2732,582 @@ paths:
                 console.log(investment.investor_token, investment.amount_tier, investment.attribution?.utm_source);
               }
             }
+  /installations:
+    get:
+      tags:
+        - Installations
+      summary: List installations of your app
+      description: |
+        Where the calling application is installed. Someone who manages the app's organization sees
+        every install; anyone else sees the installs they made or could revoke. Revoked installs stay
+        listed for 30 days.
+      operationId: listInstallations
+      security:
+        - bearerAuth:
+            - read:installations
+      responses:
+        '200':
+          description: Installations of the calling application
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallationListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags:
+        - Installations
+      summary: Install your app on a company or syndicate
+      description: |
+        Installs the calling application on a company or syndicate the token's user can edit (or, for a
+        syndicate, manages), and mints the **company-owned token** the install stands for. The token
+        appears in this response only. Requires a token authorized by a user.
+
+        The install is granted at the caller's tier (founder, admin or editor for a company). An
+        editor-tier install carries read scopes only; write scopes in `scopes` are dropped. Installing
+        on a company outside your own organization requires the app to be approved.
+      operationId: createInstallation
+      security:
+        - bearerAuth:
+            - write:installations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - target_type
+                - target_id
+              properties:
+                target_type:
+                  type: string
+                  enum:
+                    - company
+                    - syndicate
+                target_id:
+                  type: string
+                  description: The company (`co_…`) or syndicate (`syn_…`) external id.
+                scopes:
+                  type: array
+                  items:
+                    type: string
+                  description: Subset of the app's declared scopes to grant. Defaults to all of them.
+                tier:
+                  type: string
+                  description: Optional higher tier (`founder` / `full_access`), honored only when the caller holds it.
+      responses:
+        '201':
+          description: The new installation and its token (shown once)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallationTokenEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Already installed here; `error.details.installation` is the existing install's id.
+        '422':
+          description: Unknown `target_type`, or none of the requested scopes can be granted by the caller's role.
+  /installations/eligible:
+    get:
+      tags:
+        - Installations
+      summary: List where you can install your app
+      description: |
+        Companies the token's user can edit and syndicates they manage, with the tier an install would
+        be granted at and the current install if one exists. Requires a token authorized by a user.
+      operationId: listEligibleInstallTargets
+      security:
+        - bearerAuth:
+            - read:installations
+      parameters:
+        - name: target_type
+          in: query
+          schema:
+            type: string
+            enum:
+              - company
+              - syndicate
+      responses:
+        '200':
+          description: Eligible install targets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EligibleTargetListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /installations/{external_id}:
+    parameters:
+      - name: external_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Installation external id (`inst_…`).
+    get:
+      tags:
+        - Installations
+      summary: Retrieve an installation
+      operationId: getInstallation
+      security:
+        - bearerAuth:
+            - read:installations
+      responses:
+        '200':
+          description: The installation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallationEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+        - Installations
+      summary: Revoke an installation
+      description: |
+        Revokes the install and every token issued for it. Requires a token authorized by a user who
+        can edit the company (or manages the syndicate), or who administers the app's organization.
+      operationId: revokeInstallation
+      security:
+        - bearerAuth:
+            - write:installations
+      responses:
+        '200':
+          description: The installation, now revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallationEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /installations/{external_id}/tokens:
+    post:
+      tags:
+        - Installations
+      summary: Mint a token for an installation
+      description: |
+        Mints another company-owned token for an active install — for example one a founder made through
+        the install link. Scopes default to the install's grant and can only narrow it. The token appears
+        in this response only. Requires a token authorized by a user who installed it, could revoke it,
+        or manages the app's organization.
+      operationId: createInstallationToken
+      security:
+        - bearerAuth:
+            - write:installations
+      parameters:
+        - name: external_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                scopes:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '201':
+          description: The installation and a new token (shown once)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallationTokenEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The installation has been revoked.
+  /webhook_endpoints:
+    get:
+      tags:
+        - Webhook Endpoints
+      summary: List webhook endpoints
+      description: |
+        Your application's webhook endpoints. The signing secret is never included. Requires an
+        owner, admin, or developer role in the application's organization.
+      operationId: listWebhookEndpoints
+      security:
+        - bearerAuth:
+            - read:webhooks
+      responses:
+        '200':
+          description: Endpoints for the calling application
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookEndpointListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags:
+        - Webhook Endpoints
+      summary: Create a webhook endpoint
+      description: |
+        Registers an endpoint for your application. The response is the only time the
+        signing `secret` is returned; store it to verify signatures. Requires an
+        owner, admin, or developer role in the application's organization.
+
+        On the sandbox API this returns `403 manage_endpoints_on_live_api`: create test
+        endpoints through the live API with `mode: "test"`, and they are mirrored into sandbox.
+      operationId: createWebhookEndpoint
+      security:
+        - bearerAuth:
+            - write:webhooks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - url
+                - events
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  description: Public HTTPS URL to receive deliveries (private/internal IPs rejected).
+                  example: https://yourapp.com/webhooks/wefunder
+                events:
+                  type: array
+                  minItems: 1
+                  description: Event names to subscribe to (from the event catalog). At least one.
+                  items:
+                    type: string
+                    enum:
+                      - investment.created
+                      - investment.reinstated
+                      - investment.canceled
+                      - investment.converted
+                      - investment.amount_changed
+                      - investment.executed
+                      - offering.opened
+                      - offering.closing
+                      - offering.closed
+                      - offering.canceled
+                      - investment_session.created
+                      - investment_session.started
+                      - investment_session.completed
+                      - investment_session.expired
+                      - investment_session.canceled
+                      - investment.changed
+                      - syndicate_member.invited
+                      - syndicate_member.reinvited
+                      - syndicate_member.applied
+                      - syndicate_member.approved
+                      - syndicate_member.joined
+                  example:
+                    - offering.opened
+                    - investment.executed
+                mode:
+                  type: string
+                  enum:
+                    - live
+                    - test
+                  default: live
+      responses:
+        '201':
+          description: Endpoint created (includes the one-time secret)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookEndpointEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          description: Validation error (bad URL, unknown or missing events, invalid mode, or quota reached)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /webhook_endpoints/{external_id}:
+    get:
+      tags:
+        - Webhook Endpoints
+      summary: Get a webhook endpoint
+      description: Requires an owner, admin, or developer role in the application's organization.
+      operationId: getWebhookEndpoint
+      security:
+        - bearerAuth:
+            - read:webhooks
+      parameters:
+        - $ref: '#/components/parameters/webhook_external_id'
+      responses:
+        '200':
+          description: The endpoint (secret omitted)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookEndpointEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags:
+        - Webhook Endpoints
+      summary: Update a webhook endpoint
+      description: |
+        `events` replaces the subscription list wholesale (no merge); omit it to leave it
+        unchanged. An endpoint must subscribe to at least one event, so `[]` and `null` are
+        rejected; delete the endpoint to stop all deliveries. Requires an org management role.
+        Returns `403 manage_endpoints_on_live_api` on the sandbox API; use the live API.
+      operationId: updateWebhookEndpoint
+      security:
+        - bearerAuth:
+            - write:webhooks
+      parameters:
+        - $ref: '#/components/parameters/webhook_external_id'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url:
+                  type: string
+                  format: uri
+                events:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                    enum:
+                      - investment.created
+                      - investment.reinstated
+                      - investment.canceled
+                      - investment.converted
+                      - investment.amount_changed
+                      - investment.executed
+                      - offering.opened
+                      - offering.closing
+                      - offering.closed
+                      - offering.canceled
+                      - investment_session.created
+                      - investment_session.started
+                      - investment_session.completed
+                      - investment_session.expired
+                      - investment_session.canceled
+                      - investment.changed
+                      - syndicate_member.invited
+                      - syndicate_member.reinvited
+                      - syndicate_member.applied
+                      - syndicate_member.approved
+                      - syndicate_member.joined
+      responses:
+        '200':
+          description: Updated endpoint (secret omitted)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookEndpointEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Webhook Endpoints
+      summary: Remove a webhook endpoint
+      description: |
+        Stops deliveries immediately. The endpoint is retained as removed and cannot be restored.
+        Returns `403 manage_endpoints_on_live_api` on the sandbox API; use the live API.
+      operationId: deleteWebhookEndpoint
+      security:
+        - bearerAuth:
+            - write:webhooks
+      parameters:
+        - $ref: '#/components/parameters/webhook_external_id'
+      responses:
+        '200':
+          description: Removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      type:
+                        type: string
+                        example: webhook_endpoint
+                      removed:
+                        type: boolean
+                        example: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /webhook_endpoints/{external_id}/rotate_secret:
+    post:
+      tags:
+        - Webhook Endpoints
+      summary: Rotate the signing secret
+      description: |
+        Returns a new signing secret (shown once). The previous secret keeps signing for a
+        24h overlap window, so deliveries carry a `v1` for both; verify against either.
+        Returns `403 manage_endpoints_on_live_api` on the sandbox API; use the live API.
+      operationId: rotateWebhookEndpointSecret
+      security:
+        - bearerAuth:
+            - write:webhooks
+      parameters:
+        - $ref: '#/components/parameters/webhook_external_id'
+      responses:
+        '200':
+          description: Rotated (includes the new one-time secret)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookEndpointEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /webhook_endpoints/{external_id}/reenable:
+    post:
+      tags:
+        - Webhook Endpoints
+      summary: Re-enable a disabled endpoint
+      description: |
+        Recovery after auto-disable. Idempotent. Requires an org management role on the live API.
+        Also allowed on the sandbox API for an endpoint sandbox itself disabled (sandbox runs its own
+        health checks on its mirror of a test endpoint), authorized by the caller's realm.
+      operationId: reenableWebhookEndpoint
+      security:
+        - bearerAuth:
+            - write:webhooks
+      parameters:
+        - $ref: '#/components/parameters/webhook_external_id'
+      responses:
+        '200':
+          description: The (now enabled) endpoint
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookEndpointEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /webhook_endpoints/{external_id}/test:
+    post:
+      tags:
+        - Webhook Endpoints
+      summary: Send a test event
+      description: |
+        Sends a real, signed example event (fake values) using the production envelope,
+        signature scheme, and transport, and reports the outcome inline. Does not affect
+        delivery health. Rate-limited to 10 per minute per endpoint. Investor email appears
+        in the example only if your application holds `read:investors:pii`, matching what
+        real deliveries can carry.
+      operationId: testWebhookEndpoint
+      security:
+        - bearerAuth:
+            - write:webhooks
+      parameters:
+        - $ref: '#/components/parameters/webhook_external_id'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                event:
+                  type: string
+                  description: Event to simulate. Defaults to the endpoint's first subscribed event.
+                  enum:
+                    - investment.created
+                    - investment.reinstated
+                    - investment.canceled
+                    - investment.converted
+                    - investment.amount_changed
+                    - investment.executed
+                    - offering.opened
+                    - offering.closing
+                    - offering.closed
+                    - offering.canceled
+                    - investment_session.created
+                    - investment_session.started
+                    - investment_session.completed
+                    - investment_session.expired
+                    - investment_session.canceled
+                    - investment.changed
+                    - syndicate_member.invited
+                    - syndicate_member.reinvited
+                    - syndicate_member.applied
+                    - syndicate_member.approved
+                    - syndicate_member.joined
+      responses:
+        '200':
+          description: Test outcome
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookEndpointTestResultEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Endpoint is not subscribed to the event, or the event has no example
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
   /campaigns/{campaign_id}/attribution/webhooks:
     get:
       tags:
@@ -2343,6 +3866,8 @@ components:
           tokenUrl: https://api.wefunder.com/oauth/token
           scopes:
             read:public: Read public deal data (explore offerings); requires no user context
+            read:explore: See the deals the authorizing user can see on wefunder.com/explore (public plus accredited-only / invited rounds they qualify for); user tokens only
+            read:mcp: Umbrella granted to AI agents connecting through the Wefunder MCP server; implies the read scopes the MCP tools need (read:explore, read:profile, read:syndicates, read:companies, read:offerings). Not self-serve.
             read:profile: Read user profile information
             read:investments: Read user investment data
             read:campaigns: Read campaign information for companies you founded
@@ -2356,6 +3881,8 @@ components:
             write:spvs: Create and manage partner SPVs, invites, and investment sessions
             read:webhooks: View webhook subscriptions
             write:webhooks: Create, update, and delete webhook subscriptions
+            read:installations: View where your app is installed
+            write:installations: Install and uninstall your app on companies and syndicates you can edit
         clientCredentials:
           tokenUrl: https://api.wefunder.com/oauth/token
           scopes:
@@ -2381,18 +3908,18 @@ components:
       name: member_id
       in: path
       required: true
-      description: The member ID
+      description: The member's id (`mem_...`), as returned by the members list (`data[].id`). Integer ids are internal and not accepted.
       schema:
         type: string
-      example: cr_123
+      example: mem_aB3xQ9k2vF8mNp1zT5wY7Qc4
     fundraise_id:
       name: fundraise_id
       in: path
       required: true
-      description: The deal (fundraise) ID
+      description: The deal's id (`ofr_...`), as returned by the deals list. Integer ids are internal and not accepted.
       schema:
-        type: integer
-      example: 99
+        type: string
+      example: ofr_yw3OhusvpfJP4Pk3wRYV1F2R
     start_date:
       name: start_date
       in: query
@@ -2437,6 +3964,14 @@ components:
       schema:
         type: integer
       example: 12345
+    webhook_external_id:
+      name: external_id
+      in: path
+      required: true
+      description: The webhook endpoint's id (whe_...).
+      schema:
+        type: string
+      example: whe_8f3ExampleEndpoint00
     webhook_id:
       name: webhook_id
       in: path
@@ -2498,6 +4033,417 @@ components:
         type: string
       example: acme-series-a-2025-001
   schemas:
+    Installation:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Installation external id (`inst_…`).
+        type:
+          type: string
+          example: installation
+        attributes:
+          type: object
+          properties:
+            target:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum:
+                    - company
+                    - syndicate
+                id:
+                  type: string
+                  description: '`co_…` or `syn_…`'
+                name:
+                  type: string
+            tier:
+              type: string
+              description: founder / admin / editor for a company; full_access / operator for a syndicate.
+            scopes:
+              type: array
+              items:
+                type: string
+            status:
+              type: string
+              enum:
+                - active
+                - revoked
+            installed_at:
+              type: string
+              format: date-time
+            installed_by:
+              type: string
+              nullable: true
+            revoked_at:
+              type: string
+              format: date-time
+              nullable: true
+    InstallationEnvelope:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Installation'
+        meta:
+          type: object
+    InstallationListEnvelope:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Installation'
+        meta:
+          type: object
+          properties:
+            count:
+              type: integer
+    InstallationTokenEnvelope:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Installation'
+        token:
+          type: object
+          description: Shown once. Owned by the installed-on company or syndicate, scoped to the install, no expiry; revoking the install revokes it.
+          properties:
+            access_token:
+              type: string
+              example: at_live_…
+            token_type:
+              type: string
+              example: Bearer
+            scope:
+              type: string
+            installation:
+              type: string
+              description: '`inst_…`'
+            created_at:
+              type: integer
+        meta:
+          type: object
+    EligibleTargetListEnvelope:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum:
+                  - company
+                  - syndicate
+              id:
+                type: string
+              name:
+                type: string
+              tier:
+                type: string
+                description: The tier an install would be granted at.
+              installed:
+                type: boolean
+              installation:
+                nullable: true
+                allOf:
+                  - $ref: '#/components/schemas/Installation'
+        meta:
+          type: object
+    WebhookEndpoint:
+      type: object
+      properties:
+        id:
+          type: string
+          example: whe_8f3ExampleEndpoint00
+        type:
+          type: string
+          example: webhook_endpoint
+        attributes:
+          type: object
+          properties:
+            url:
+              type: string
+              format: uri
+            mode:
+              type: string
+              enum:
+                - live
+                - test
+            events:
+              type: array
+              items:
+                type: string
+            enabled:
+              type: boolean
+            secret:
+              type: string
+              description: Signing secret. Present only in create and rotate_secret responses.
+            failing_since:
+              type: string
+              format: date-time
+              nullable: true
+            last_delivery_at:
+              type: string
+              format: date-time
+              nullable: true
+            last_delivery_status:
+              type: string
+              nullable: true
+              description: |
+                Outcome of the most recent delivery: the HTTP status code as a string (for
+                example `"200"` or `"503"`), or, when no response came back, one of
+                `timeout`, `blocked_url`, `tls_error`, `connection_failed`.
+              example: '200'
+            created_at:
+              type: string
+              format: date-time
+    WebhookEndpointEnvelope:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/WebhookEndpoint'
+        meta:
+          type: object
+          properties:
+            request_id:
+              type: string
+    WebhookEndpointListEnvelope:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookEndpoint'
+        meta:
+          type: object
+          properties:
+            count:
+              type: integer
+            quota:
+              type: integer
+              description: Maximum endpoints allowed for this application.
+            request_id:
+              type: string
+    WebhookEndpointTestResultEnvelope:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            type:
+              type: string
+              example: webhook_test
+            delivered:
+              type: boolean
+            response_code:
+              type: integer
+              nullable: true
+            error:
+              type: string
+              nullable: true
+              enum:
+                - timeout
+                - blocked_url
+                - tls_error
+                - connection_failed
+                - null
+              description: |
+                Why no HTTP response came back. `null` when the endpoint responded, even with a
+                non-2xx status (see `response_code`). `blocked_url` means the URL failed the
+                HTTPS/public-address check at send time.
+            duration_ms:
+              type: integer
+            event:
+              type: string
+            payload:
+              type: object
+              description: The exact signed envelope that was POSTed.
+        meta:
+          type: object
+          properties:
+            request_id:
+              type: string
+    InvestmentChangeListEnvelope:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/InvestmentDeltaRecord'
+        meta:
+          type: object
+          properties:
+            mode:
+              type: string
+              enum:
+                - bootstrap
+                - delta
+            has_more:
+              type: boolean
+            next_cursor:
+              type: string
+              description: Always present. Pass it back as `cursor` on the next call, even when `has_more` is false.
+            page_count:
+              type: integer
+            company_id:
+              type: string
+    InvestmentDeltaRecord:
+      type: object
+      description: |
+        The record of one investment, or a tombstone (`visible: false`, only `id`). `visible` is
+        founder visibility: a user's own canceled investment is a full record with `visible: false`
+        and `status: canceled`. Investor PII keys are omitted without `read:investors:pii`, except on
+        the user's own records.
+      required:
+        - id
+        - visible
+        - observed_at
+      properties:
+        id:
+          type: string
+          description: Investment external id (`inv_…`), stable for the life of the investment.
+        visible:
+          type: boolean
+        status:
+          type: string
+          enum:
+            - reserved
+            - active
+            - executed
+            - canceled
+            - converted
+          description: Company/offering audiences receive canceled and converted investments as tombstones; the values appear for audiences that can see them (e.g. the investor's own).
+        converted_to:
+          type: string
+          nullable: true
+        converted_from:
+          type: string
+          nullable: true
+        offering:
+          type: string
+          description: Offering external id (`ofr_…`).
+        company:
+          type: string
+          description: Company external id (`co_…`).
+        investment_type:
+          type: string
+        offering_type:
+          type: string
+        group:
+          type: string
+          description: The founder dashboard's investment group label (e.g. CONFIRMED, IS READY).
+        applied_at:
+          type: string
+          format: date-time
+        amounts:
+          type: object
+          properties:
+            committed_cents:
+              type: integer
+            investment_size_cents:
+              type: integer
+            in_escrow_cents:
+              type: integer
+            raised_cents:
+              type: integer
+              description: What this investment contributes to the offering's public raised figure (the deal page, company card and directory header). Equals `investment_size_cents` once the investment is soft-confirmed; 0 until then (see `needs_whitelisting`). Summing `raised_cents` over an offering's records reproduces the site's number; summing `committed_cents` does not.
+            currency:
+              type: string
+              example: usd
+        shares:
+          type: string
+          nullable: true
+          description: Shares this investment buys at its committed amount, as a decimal string (`"295"`, `"1234.5"`). For an investment through the SPV this is the company shares allotted to it through the vehicle. `null` when the round has no share concept (SAFE, note, reservation) or no shares are computed for the investment. Computed per investment; not the investor's post-funding position.
+          example: '295'
+        average_share_price:
+          type: string
+          nullable: true
+          description: Weighted average price per share for this investment (total share price / `shares`), as a decimal string. With tiered or early-bird pricing this need not equal any single price on the round. `null` whenever `shares` is `null`.
+          example: '3.38'
+        needs_whitelisting:
+          type: boolean
+        external_username:
+          type: string
+          nullable: true
+          description: PII scope.
+        message:
+          type: string
+          nullable: true
+          description: PII scope.
+        investor:
+          type: object
+          properties:
+            id:
+              type: string
+              description: Investor external id (`usr_…`).
+            deactivated:
+              type: boolean
+              description: |
+                True once the investor's Wefunder account has been deactivated. The identity fields are then
+                redacted (`name`/`legal_name` = `[deleted user]`, the rest null) and the record is republished
+                with `reason: investor_deactivated`; overwrite your copy. The investment itself persists.
+            via_entity:
+              type: boolean
+            name:
+              type: string
+              description: PII scope.
+            legal_name:
+              type: string
+              description: PII scope.
+            email:
+              type: string
+              nullable: true
+              description: PII scope.
+            address:
+              type: object
+              description: PII scope.
+            bio:
+              type: string
+              nullable: true
+              description: PII scope.
+        blockers:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              description:
+                type: string
+                nullable: true
+        contracts:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                nullable: true
+              override_amount_cents:
+                type: integer
+                nullable: true
+              early_bird:
+                type: boolean
+        observed_at:
+          type: string
+          format: date-time
+          description: When this payload was observed by the publisher. Not a version.
+        cursor:
+          type: string
+          nullable: true
+          description: Ledger position of the change that listed this record (delta pages only).
+        reason:
+          type: string
+          nullable: true
+          enum:
+            - changed
+            - reprojected
+            - investor_deactivated
+          description: |
+            Why the ledger row exists. `investor_deactivated` marks the first republish after the investor's
+            account was deactivated (identity fields redacted). Delta pages only.
     AttributedInvestmentListEnvelope:
       type: object
       properties:
@@ -2710,6 +4656,12 @@ components:
               type: string
               description: The sort applied to this response.
               example: most_raised
+            filters:
+              type: object
+              description: The filters applied to this response (validated values), empty when none.
+              example:
+                security: safe
+                testing_the_waters: false
             next_cursor:
               type: integer
               nullable: true
@@ -2837,6 +4789,106 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/Intent'
+    IntentPreviewEnvelope:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - intent_preview
+            attributes:
+              type: object
+              properties:
+                action:
+                  type: string
+                resource_type:
+                  type: string
+                resource_id:
+                  type: string
+                  description: The resource's external id (`co_...`, `syn_...`).
+                params:
+                  type: object
+                impact_summary:
+                  type: string
+                  description: What the review page would show the approver.
+                scope:
+                  type: string
+                  description: The scope `POST /intents` requires for this action.
+    CommentProposalEnvelope:
+      type: object
+      description: What propose_comment returns — a dry run of comments.create plus the context an agent needs before minting.
+      properties:
+        proposal:
+          type: object
+          description: The arguments, as normalized, to pass to write_comment_intent once the user confirms.
+          properties:
+            company_id:
+              type: string
+            target_type:
+              type: string
+              enum:
+                - company
+                - comment
+            target:
+              type: string
+            body:
+              type: string
+            disclosure_key:
+              type: string
+              nullable: true
+        allowed:
+          type: boolean
+        refusal:
+          type: string
+          nullable: true
+          description: The handler's reason when `allowed` is false.
+        draft:
+          type: object
+          nullable: true
+          description: The dry run (null when `allowed` is false). Same shape as IntentPreviewEnvelope's attributes.
+          properties:
+            action:
+              type: string
+            resource_type:
+              type: string
+            resource_id:
+              type: string
+            params:
+              type: object
+            impact_summary:
+              type: string
+            scope:
+              type: string
+        related_questions:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              question:
+                type: string
+                nullable: true
+              asked_at:
+                type: string
+                nullable: true
+              answered_by_team:
+                type: boolean
+              answers:
+                type: array
+                items:
+                  type: string
+                  nullable: true
+              url:
+                type: string
+                nullable: true
+        drafting_guidelines:
+          type: string
+        next_step:
+          type: string
     IntentListEnvelope:
       type: object
       properties:
@@ -2852,9 +4904,8 @@ components:
       properties:
         id:
           type: string
-          format: uuid
-          description: The intent's id (Intent has a UUID primary key).
-          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+          description: The intent's id (`int_...`). Poll it at `GET /intents/{intent_id}`.
+          example: int_aB3xQ9k2vF8mNp1zT5wY7Qc4
         status:
           type: string
           example: pending
@@ -2868,9 +4919,94 @@ components:
         data:
           type: array
           items:
-            $ref: '#/components/schemas/Investment'
+            $ref: '#/components/schemas/InvestmentDeltaRecord'
         meta:
-          $ref: '#/components/schemas/PaginationMeta'
+          type: object
+          properties:
+            mode:
+              type: string
+              enum:
+                - bootstrap
+                - delta
+              description: '`bootstrap` for list pages, `delta` for sync pages (cursor or updated_since).'
+            has_more:
+              type: boolean
+            next_cursor:
+              type: string
+              description: Always present. Pass it back as `cursor` on the next call, even when `has_more` is false.
+            page_count:
+              type: integer
+            published_through:
+              type: string
+              format: date-time
+              nullable: true
+              description: When the newest change this page can reflect was published. Records changed after this arrive on the next sync.
+    InvestmentEnvelope:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/InvestmentDeltaRecord'
+        meta:
+          type: object
+          properties:
+            source:
+              type: string
+              enum:
+                - current
+            published_observed_at:
+              type: string
+              format: date-time
+              nullable: true
+              description: '`observed_at` of the published record, or null if never published.'
+            published_matches:
+              type: boolean
+              nullable: true
+              description: Whether the published record equals this current one; null if never published.
+    OfferingStatsEnvelope:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            offering:
+              type: string
+            company:
+              type: string
+            currency:
+              type: string
+              nullable: true
+            by_status:
+              type: object
+              additionalProperties:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  committed_cents:
+                    type: integer
+                  raised_cents:
+                    type: integer
+            total:
+              type: object
+              properties:
+                count:
+                  type: integer
+                committed_cents:
+                  type: integer
+                raised_cents:
+                  type: integer
+                  description: The offering's public raised figure rebuilt from the records' `amounts.raised_cents`. The campaign ticker may add sibling Reg D rounds under its roll-in policy.
+        meta:
+          type: object
+          properties:
+            source:
+              type: string
+              enum:
+                - published
+            published_through:
+              type: string
+              format: date-time
+              nullable: true
     InvestmentSessionEnvelope:
       type: object
       properties:
@@ -3108,6 +5244,123 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/SyndicateStatistics'
+    FollowedCompany:
+      type: object
+      description: One company on the authenticated user's watchlist (GET /users/me/follows).
+      properties:
+        id:
+          type: string
+          description: The company's id (`co_...`) for `GET /companies/{id}`.
+          example: co_8Kd0aB3xQ9k2vF8mNp1zT5wY
+        type:
+          type: string
+          enum:
+            - company
+        attributes:
+          type: object
+          properties:
+            name:
+              type: string
+              nullable: true
+            tagline:
+              type: string
+              nullable: true
+            url:
+              type: string
+              nullable: true
+            logo_url:
+              type: string
+              nullable: true
+            raising:
+              type: boolean
+              description: True when the company has a round accepting investments right now.
+            profile_available:
+              type: boolean
+              description: Whether `GET /companies/{id}` will serve this company to this user.
+            followed_at:
+              type: string
+              format: date-time
+              nullable: true
+    FollowedCompanyListEnvelope:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/FollowedCompany'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+    FollowStateEnvelope:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+              nullable: true
+              description: The company's id (`co_...`).
+            type:
+              type: string
+              enum:
+                - follow_state
+            attributes:
+              type: object
+              properties:
+                followed:
+                  type: boolean
+                  description: Whether the user follows the company after this call.
+                changed:
+                  type: boolean
+                  description: Whether this call changed anything (false when already in the requested state).
+    MyCompany:
+      type: object
+      description: One of the authenticated user's own companies (GET /users/me/companies).
+      properties:
+        id:
+          type: string
+          description: The company's id (`co_...`) — what the founder-scoped endpoints take.
+          example: co_8Kd0aB3xQ9k2vF8mNp1zT5wY
+        type:
+          type: string
+          enum:
+            - company
+        attributes:
+          type: object
+          properties:
+            name:
+              type: string
+              example: Acme Robotics
+            tagline:
+              type: string
+              nullable: true
+            url:
+              type: string
+              nullable: true
+              description: The company's Wefunder page.
+              example: https://wefunder.com/acme
+            roles:
+              type: array
+              description: The user's roles on this company.
+              items:
+                type: string
+              example:
+                - founder
+            raising:
+              type: boolean
+              description: True when a round is currently accepting investments or reservations.
+    MyCompanyListEnvelope:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/MyCompany'
+        meta:
+          type: object
+          properties:
+            count:
+              type: integer
     UserEnvelope:
       type: object
       properties:
@@ -3158,12 +5411,59 @@ components:
               example: https://uploads.wefunder.com/uploads/company/logo/189517/large_logo.png
             exemption:
               $ref: '#/components/schemas/Exemption'
-            security_type:
+            security:
+              oneOf:
+                - $ref: '#/components/schemas/Security'
+              nullable: true
+              description: |
+                What the offering issues, as a discriminated union on `type` (see `Security`).
+                Null for a Testing-the-Waters round, which has no final terms yet — see
+                `intended_security` for what it plans to issue.
+            intended_security:
+              type: object
+              nullable: true
+              description: |
+                Testing-the-Waters rounds only: the kind of security the company says it intends to
+                issue when the round opens, with no terms (none are final). Null for a live round,
+                and for a TTW round whose terms are still to be decided.
+              properties:
+                type:
+                  type: string
+                  enum:
+                    - safe
+                    - equity
+                    - convertible_note
+                    - revenue_share
+                    - debt
+                    - fund
+                label:
+                  type: string
+                  example: SAFE
+            industries:
+              type: array
+              description: |
+                The company's curated industry tags (the ones the site's explore page filters by),
+                as `{ type, label }`. Empty when none are set. Filterable via `industry`.
+              items:
+                $ref: '#/components/schemas/TagRef'
+            business_models:
+              type: array
+              description: The company's curated business-model tags, as `{ type, label }`. Filterable via `business_model`.
+              items:
+                $ref: '#/components/schemas/TagRef'
+            status:
               type: string
-              description: The financial instrument (e.g. safe, convertible_note, equity, priced_round, fund).
-              example: safe
-            state:
-              type: string
+              enum:
+                - upcoming
+                - open
+                - closed
+                - canceled
+              description: |
+                Where the round is in its life. `open` accepts investments (or reservations, for
+                a Testing-the-Waters round); `closed` finished raising; `upcoming` is not yet
+                accepting (insiders only); `canceled` was aborted. How close an open round is
+                to closing is `closes_at`; whether it is over target is `amount_raised` vs
+                `funding_target`.
               example: open
             testing_the_waters:
               type: boolean
@@ -3184,40 +5484,1055 @@ components:
             amount_raised:
               type: string
               nullable: true
-              description: Amount raised so far in USD, as a decimal string (hellbanned investors excluded).
+              description: |
+                Amount raised so far **by this offering** in USD, as a decimal string (hellbanned
+                investors excluded). Not the company's lifetime total, and not the combined figure
+                the company's Wefunder page shows when a Reg D round runs alongside — see `warnings`.
               example: '642300'
             investor_count:
               type: integer
               nullable: true
-              description: Distinct investor count (hellbanned investors excluded).
+              description: Distinct investor count for this offering (hellbanned investors excluded).
               example: 1203
             started_at:
               type: string
               format: date-time
               nullable: true
               example: '2025-03-01T12:00:00Z'
+            closes_at:
+              type: string
+              format: date-time
+              nullable: true
+              description: When an open round is scheduled to stop accepting investments. Null when no date is set or the round is not open.
+              example: '2025-04-30T03:59:59Z'
             closed_at:
               type: string
               format: date-time
               nullable: true
               example: '2025-03-01T12:00:00Z'
+            publicly_visible:
+              type: boolean
+              description: |
+                **Logged-in view only** (`read:explore`). `false` when a logged-out visitor could
+                not see this offering — it is in the response only because of who the authorizing
+                user is (accredited, invited, Vault/syndicate member). Absent in the public view.
+              example: true
+            invested:
+              type: boolean
+              description: |
+                **Logged-in view only** (`read:explore`). Whether the authorizing user has an
+                active investment in this offering. Absent in the public view.
+              example: false
+            followed:
+              type: boolean
+              description: |
+                **Logged-in view only** (`read:explore`). Whether the authorizing user follows this
+                company on wefunder.com (their watchlist). Absent in the public view.
+              example: false
         company:
-          type: object
-          description: Reference to the parent company.
-          properties:
-            id:
-              type: string
-              description: The company's id (`co_...`).
-              example: co_8Kd0aB3xQ9k2vF8mNp1zT5wY
-            type:
-              type: string
-              example: company
+          type: string
+          nullable: true
+          description: The parent company's id (`co_...`). Resolve it with `GET /companies/{id}`.
+          example: co_8Kd0aB3xQ9k2vF8mNp1zT5wY
+        warnings:
+          type: array
+          description: |
+            Context for reading this offering's numbers correctly. Empty for most offerings.
+            `concurrent_rounds`: the company has other open rounds (e.g. a Reg D round alongside
+            this one), so the company's Wefunder page shows a combined total larger than
+            `amount_raised`. `prior_rounds`: the company completed earlier rounds on Wefunder, so
+            `amount_raised` is not its lifetime total. Not part of the `etag`.
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                enum:
+                  - concurrent_rounds
+                  - prior_rounds
+                example: prior_rounds
+              message:
+                type: string
+                example: This company completed 2 earlier rounds on Wefunder. amount_raised and investor_count cover this offering only, not the company's lifetime total.
         etag:
           type: string
           description: |
-            Content digest of this offering's public payload, for client-side change detection
-            when polling.
+            Content digest of this offering's public payload (`attributes`), for client-side change
+            detection when polling. `warnings` are not included.
           example: a1b2c3d4e5f6
+    CompanySearchResult:
+      type: object
+      description: One company from the site search bar (GET /companies/search).
+      properties:
+        id:
+          type: string
+          description: The company's id (`co_...`) for `GET /companies/{id}`.
+          example: co_8Kd0aB3xQ9k2vF8mNp1zT5wY
+        type:
+          type: string
+          enum:
+            - company
+        attributes:
+          type: object
+          properties:
+            name:
+              type: string
+              nullable: true
+              example: Acme Robotics
+            tagline:
+              type: string
+              nullable: true
+            url:
+              type: string
+              nullable: true
+              description: The company's Wefunder page.
+              example: https://wefunder.com/acme
+            logo_url:
+              type: string
+              nullable: true
+            raising:
+              type: boolean
+              description: |
+                True when the company is raising now (the site's "Raising Now" badge). False means the
+                site shows its "Funded" badge, which it also shows for companies with no live round
+                (including ones whose last round was aborted); it is not a statement that a raise closed
+                successfully.
+            profile_available:
+              type: boolean
+              description: |
+                Whether `GET /companies/{id}` will serve this company to this viewer. Since the company
+                page serves every publicly listed profile, this is false only for an index hit whose
+                live row no longer clears the site's bar (or an accredited-only company seen without
+                accreditation). Link to `url` when false.
+    CompanySearchResultListEnvelope:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompanySearchResult'
+        meta:
+          type: object
+          properties:
+            query:
+              type: string
+            count:
+              type: integer
+    CompanyDisclosuresEnvelope:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/CompanyDisclosures'
+    CompanyDisclosures:
+      type: object
+      description: The company's public Form C disclosures (the site's Details tab), one section per key. A section is null when the company hides it on the site.
+      properties:
+        id:
+          type: string
+          description: The company's id (`co_...`).
+        type:
+          type: string
+          enum:
+            - company_disclosures
+        attributes:
+          type: object
+          properties:
+            offering_id:
+              type: string
+              description: The round whose Form C this is (`ofr_...`).
+            filing:
+              type: object
+              properties:
+                exemption:
+                  $ref: '#/components/schemas/Exemption'
+                sec_filing_url:
+                  type: string
+                  nullable: true
+                  description: The filing on sec.gov, when filed.
+                filed:
+                  type: boolean
+                statement_date:
+                  type: string
+                  format: date
+                  nullable: true
+                  description: The date the financial statements are as of.
+                fiscal_year_end:
+                  type: string
+                  nullable: true
+                  description: '`--MM-DD` (ISO 8601 recurring date), e.g. `--12-31`.'
+            business:
+              type: object
+              properties:
+                legal_name:
+                  type: string
+                  nullable: true
+                legal_form:
+                  type: string
+                  nullable: true
+                jurisdiction:
+                  type: string
+                  nullable: true
+                incorporated_on:
+                  type: string
+                  format: date
+                  nullable: true
+                employees:
+                  type: integer
+                  nullable: true
+            financial_statements:
+              type: object
+              description: One column per fiscal year on file; a year with no figures is omitted.
+              properties:
+                most_recent:
+                  $ref: '#/components/schemas/FiscalYearFinancials'
+                prior:
+                  $ref: '#/components/schemas/FiscalYearFinancials'
+                prior_prior:
+                  $ref: '#/components/schemas/FiscalYearFinancials'
+            ratios:
+              type: object
+              nullable: true
+              description: The page's at-a-glance ratios for the most recent fiscal year, percentages as decimal strings; null where the page shows N/A, or the whole block null when hidden for this company.
+              properties:
+                net_margin_percent:
+                  type: string
+                  nullable: true
+                  description: Net income / revenue × 100.
+                gross_margin_percent:
+                  type: string
+                  nullable: true
+                  description: (Revenue − cost of goods sold) / revenue × 100.
+                return_on_assets_percent:
+                  type: string
+                  nullable: true
+                  description: Net income / total assets × 100.
+                debt_to_assets_percent:
+                  type: string
+                  nullable: true
+                  description: (Short-term + long-term debt) / total assets × 100.
+                cash_to_assets_percent:
+                  type: string
+                  nullable: true
+                  description: Cash / total assets × 100.
+                revenue_per_employee:
+                  type: string
+                  nullable: true
+                  description: USD, decimal string.
+            current_position:
+              type: object
+              description: The founder's own disclosure of where the company stands today, each field when supplied.
+              properties:
+                cash_on_hand:
+                  type: string
+                  nullable: true
+                  description: USD, decimal string.
+                cash_on_hand_as_of:
+                  type: string
+                  format: date
+                  nullable: true
+                average_monthly_revenue:
+                  type: string
+                  nullable: true
+                  description: USD, decimal string.
+                average_monthly_cost_of_goods:
+                  type: string
+                  nullable: true
+                  description: USD, decimal string.
+                average_monthly_expenses:
+                  type: string
+                  nullable: true
+                  description: USD, decimal string.
+                average_monthly_burn:
+                  type: string
+                  nullable: true
+                  description: USD, decimal string.
+            financial_condition:
+              type: string
+              nullable: true
+              description: The issuer's financial-condition narrative, plain text.
+            financial_statement_documents:
+              type: array
+              items:
+                $ref: '#/components/schemas/DisclosureDocument'
+            investment_documents:
+              type: array
+              description: The contracts an investor signs (the page's "Investment Terms").
+              items:
+                $ref: '#/components/schemas/DisclosureDocument'
+            risks:
+              type: array
+              description: The issuer's risk factors, in the page's order, plain text.
+              items:
+                type: string
+            use_of_funds:
+              type: array
+              nullable: true
+              description: How the company says it will use the money at each amount raised.
+              items:
+                type: object
+                properties:
+                  if_raised:
+                    type: string
+                    nullable: true
+                    description: USD, decimal string.
+                  plan:
+                    type: string
+                    nullable: true
+            directors:
+              type: array
+              nullable: true
+              items:
+                $ref: '#/components/schemas/DisclosurePerson'
+            officers:
+              type: array
+              nullable: true
+              items:
+                $ref: '#/components/schemas/DisclosurePerson'
+            voting_power:
+              type: array
+              nullable: true
+              description: Holders of 20% or more of voting power, as disclosed.
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    nullable: true
+                  holding:
+                    type: string
+                    nullable: true
+                    description: Number and class of securities held, as disclosed.
+                  voting_power_percent:
+                    type: string
+                    nullable: true
+            capital_structure:
+              type: array
+              nullable: true
+              items:
+                type: object
+                properties:
+                  class_of_security:
+                    type: string
+                    nullable: true
+                  authorized:
+                    type: string
+                    nullable: true
+                  outstanding:
+                    type: string
+                    nullable: true
+                  voting_rights:
+                    type: string
+                    nullable: true
+                  other_rights:
+                    type: string
+                    nullable: true
+            prior_offerings:
+              type: array
+              nullable: true
+              description: Exempt offerings in the prior three years, as disclosed.
+              items:
+                type: object
+                properties:
+                  date:
+                    type: string
+                    format: date
+                    nullable: true
+                  exemption:
+                    type: string
+                    nullable: true
+                  security_type:
+                    type: string
+                    nullable: true
+                  amount_sold:
+                    type: string
+                    nullable: true
+                  use_of_proceeds:
+                    type: string
+                    nullable: true
+                  offering_id:
+                    type: string
+                    nullable: true
+                    description: The Wefunder offering (`ofr_...`) when the prior offering ran here.
+            outstanding_notes:
+              type: array
+              nullable: true
+              items:
+                type: object
+                properties:
+                  amount:
+                    type: string
+                    nullable: true
+                  outstanding_principal:
+                    type: string
+                    nullable: true
+                  valuation_cap:
+                    type: string
+                    nullable: true
+                  uncapped:
+                    type: boolean
+                  interest_rate_percent:
+                    type: string
+                    nullable: true
+                  discount_percent:
+                    type: string
+                    nullable: true
+                  maturity_date:
+                    type: string
+                    format: date
+                    nullable: true
+                  description:
+                    type: string
+                    nullable: true
+            outstanding_debts:
+              type: object
+              nullable: true
+              properties:
+                note:
+                  type: string
+                  nullable: true
+                  description: A company-specific note the site shows instead of the table, when set.
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      original_amount:
+                        type: string
+                        nullable: true
+                      outstanding_principal:
+                        type: string
+                        nullable: true
+                      current_with_payments:
+                        type: boolean
+                        nullable: true
+                      maturity_date:
+                        type: string
+                        format: date
+                        nullable: true
+                      description:
+                        type: string
+                        nullable: true
+            related_parties:
+              type: object
+              nullable: true
+              properties:
+                description:
+                  type: string
+                  nullable: true
+                parties:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        nullable: true
+                      relationship:
+                        type: string
+                        nullable: true
+                      amount:
+                        type: string
+                        nullable: true
+                      date:
+                        type: string
+                        format: date
+                        nullable: true
+                      outstanding_principal:
+                        type: string
+                        nullable: true
+                      description:
+                        type: string
+                        nullable: true
+    FiscalYearFinancials:
+      type: object
+      description: One fiscal year's figures from the Form C, USD decimal strings (null where not reported).
+      properties:
+        total_assets:
+          type: string
+          nullable: true
+        cash_and_equivalents:
+          type: string
+          nullable: true
+        accounts_receivable:
+          type: string
+          nullable: true
+        short_term_debt:
+          type: string
+          nullable: true
+        long_term_debt:
+          type: string
+          nullable: true
+        revenue:
+          type: string
+          nullable: true
+        cost_of_goods_sold:
+          type: string
+          nullable: true
+        taxes_paid:
+          type: string
+          nullable: true
+        net_income:
+          type: string
+          nullable: true
+    DisclosureDocument:
+      type: object
+      properties:
+        name:
+          type: string
+          nullable: true
+        url:
+          type: string
+    DisclosurePerson:
+      type: object
+      properties:
+        name:
+          type: string
+          nullable: true
+        titles:
+          type: string
+          nullable: true
+        since:
+          type: integer
+          nullable: true
+          description: Year joined.
+        director:
+          type: boolean
+        officer:
+          type: boolean
+    CompanyUpdate:
+      type: object
+      description: One post from a company's Posts tab. Plain text, never HTML.
+      properties:
+        id:
+          type: string
+          nullable: true
+          description: The post's public id (its share token); pass as `update_id` for the full text.
+        type:
+          type: string
+          enum:
+            - company_update
+        attributes:
+          type: object
+          properties:
+            kind:
+              type: string
+              description: '`update`, `note`, `spotlight`, `bounty`, ...'
+            title:
+              type: string
+              nullable: true
+            excerpt:
+              type: string
+              nullable: true
+              description: The first ~280 characters, plain text.
+            content:
+              type: string
+              nullable: true
+              description: Full plain text. Present on the single-post endpoint; null in lists.
+            published_at:
+              type: string
+              format: date-time
+              nullable: true
+            pinned:
+              type: boolean
+            visibility:
+              type: string
+              nullable: true
+              enum:
+                - public
+                - investors
+                - community
+                - founders
+                - private
+                - null
+              description: Who the site shows the post to. You only ever receive posts you may see.
+            author:
+              type: object
+              nullable: true
+              properties:
+                name:
+                  type: string
+                  nullable: true
+            comments_count:
+              type: integer
+            likes_count:
+              type: integer
+            url:
+              type: string
+              nullable: true
+              description: The post's page on wefunder.com.
+    CompanyUpdateListEnvelope:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompanyUpdate'
+        meta:
+          type: object
+          properties:
+            company:
+              type: string
+              description: The company's id (`co_...`).
+            has_more:
+              type: boolean
+            page_count:
+              type: integer
+            next_cursor:
+              type: integer
+              nullable: true
+    CompanyUpdateEnvelope:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/CompanyUpdate'
+    CompanyPitchEnvelope:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/CompanyPitch'
+    CompanyPitch:
+      type: object
+      description: The company page's pitch (the Overview tab's story) as ordered blocks, plus the round's perk tiers.
+      properties:
+        id:
+          type: string
+          description: The company's id (`co_...`).
+        type:
+          type: string
+          enum:
+            - company_pitch
+        attributes:
+          type: object
+          properties:
+            offering_id:
+              type: string
+              nullable: true
+              description: The round the page shows this viewer (`ofr_...`), whose perks these are; null when the viewer may see none.
+            title:
+              type: string
+              description: The heading the page puts over the story (the founder's own, or the default).
+            url:
+              type: string
+              nullable: true
+              description: The company's page on wefunder.com.
+            authored_by:
+              type: string
+              enum:
+                - company
+                - wefunder
+              description: '`company`: the founder wrote the story. `wefunder`: a Wefunder-prepared deal memo the company did not participate in.'
+            disclaimer:
+              type: string
+              nullable: true
+              description: The page's notice on a Wefunder-prepared deal memo; null when the company authored the story.
+            story:
+              type: object
+              description: The story in document order, as the page renders it. Empty `blocks` when the company has no story.
+              properties:
+                blocks:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/PitchBlock'
+                image_count:
+                  type: integer
+                video_count:
+                  type: integer
+                inline_images_omitted:
+                  type: integer
+                  description: Images the page renders from an inline `data:` URL, which have no fetchable URL and are left out of `blocks`. Almost always 0.
+                character_count:
+                  type: integer
+                  description: Characters of text across paragraph, heading, list, and footnote blocks.
+            perks:
+              type: object
+              nullable: true
+              description: The perk tiers the page shows; null when the viewer may see no round.
+              properties:
+                offering_id:
+                  type: string
+                  nullable: true
+                  description: The round these perks belong to (`ofr_...`) when it is the round the page shows. Null when the sidebar reads a round the viewer cannot resolve yet (a Testing-the-Waters page shows the perks of the round it converts into, which is still being set up).
+                currency:
+                  type: string
+                  description: ISO 4217 code the tier amounts are denominated in, e.g. `USD` or `EUR`.
+                described_in_pitch:
+                  type: boolean
+                  description: Heuristic. True when the tiers are a placeholder ("See investor overview page", or one identical short sentence on every tier) and the real perks are in the story, usually as images.
+                tiers:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/PerkTier'
+    PitchBlock:
+      type: object
+      description: One block of the story. `type` says which of the other keys are present.
+      properties:
+        type:
+          type: string
+          enum:
+            - heading
+            - paragraph
+            - list
+            - image
+            - video
+            - footnote
+        level:
+          type: integer
+          description: Heading level 1–6 (`heading` only).
+        text:
+          type: string
+          description: Plain text (`heading`, `paragraph`, and `footnote`). A footnote reference in running text appears as `[n]`.
+        number:
+          type: integer
+          description: The footnote's number, matching its `[n]` reference (`footnote` only).
+        ordered:
+          type: boolean
+          description: Numbered list (`list` only).
+        start:
+          type: integer
+          description: First number of an ordered list that resumes after an image or nested list split it (`list` only, when above 1).
+        items:
+          type: array
+          items:
+            type: string
+          description: Plain-text list items (`list` only).
+        links:
+          type: array
+          description: The hyperlinks in this block's text, in order, as the page links them (`paragraph`, `heading`, `list`; absent when there are none). Anchor text stays inline in `text` / `items`.
+          items:
+            type: object
+            properties:
+              text:
+                type: string
+                nullable: true
+                description: The anchor text.
+              url:
+                type: string
+                description: Absolute URL; site-relative hrefs are resolved against wefunder.com.
+        url:
+          type: string
+          description: Absolute URL of the image or video (`image` and `video`).
+        link:
+          type: string
+          description: Where the page links this image or video to, when it is wrapped in a hyperlink (`image` and `video`; absent otherwise).
+        alt:
+          type: string
+          nullable: true
+          description: The image's alt text; almost always null on Wefunder pitches (`image` only).
+        filename:
+          type: string
+          nullable: true
+          description: The image file's name, often the only hint at its content, e.g. `Tier_3_Final.png` (`image` only).
+        provider:
+          type: string
+          description: '`youtube`, `vimeo`, `wistia`, `loom`, `upload` (hosted by Wefunder), or `other` (`video` only).'
+    PerkTier:
+      type: object
+      properties:
+        qualifying_amount:
+          type: string
+          description: Investment that unlocks the tier, as a decimal string in `perks.currency`.
+        description:
+          type: string
+          nullable: true
+          description: Plain text, the founder's own words.
+    CompanyQuestionPerson:
+      type: object
+      properties:
+        id:
+          type: string
+          nullable: true
+          description: The person's Wefunder id (`usr_...`).
+          example: usr_7Hk2mPq9rT4vX1yB3nC5dF8g
+        name:
+          type: string
+          nullable: true
+        role:
+          type: string
+          nullable: true
+          description: 'The label the tab shows: `founder`, `employee`, `wefunder team`, or the asker''s own disclosure (e.g. `investor`).'
+        team:
+          type: boolean
+          description: True when the person is on the company's team (a founder or employee).
+    CompanyQuestion:
+      type: object
+      description: One question from a company's Ask tab with its answers. Plain text.
+      properties:
+        id:
+          type: string
+          description: The question's id (`cmt_...`).
+          example: cmt_m2JkUx7E3aBFscGMKDdJ9saR
+        type:
+          type: string
+          enum:
+            - company_question
+        attributes:
+          type: object
+          properties:
+            question:
+              type: string
+              nullable: true
+            asked_at:
+              type: string
+              format: date-time
+              nullable: true
+            asked_by:
+              $ref: '#/components/schemas/CompanyQuestionPerson'
+            likes_count:
+              type: integer
+            highlighted:
+              type: boolean
+              description: The team highlighted this question on the tab.
+            answered_by_team:
+              type: boolean
+            match:
+              type: string
+              enum:
+                - question
+                - answer
+              nullable: true
+              description: In a search (`q`), whether the question's own text or one of its answers matched. Null otherwise.
+            answers:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: The answer's id (`cmt_...`).
+                  answer:
+                    type: string
+                    nullable: true
+                  answered_at:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  answered_by:
+                    $ref: '#/components/schemas/CompanyQuestionPerson'
+                  likes_count:
+                    type: integer
+            url:
+              type: string
+              nullable: true
+              description: The company's Ask tab on wefunder.com.
+    CompanyQuestionListEnvelope:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompanyQuestion'
+        meta:
+          type: object
+          properties:
+            company:
+              type: string
+            sort:
+              type: string
+              description: The sort applied; `search` when `q` was given (results are ranked by match).
+            q:
+              type: string
+              nullable: true
+            unanswered_by_team:
+              type: boolean
+            past_raises:
+              type: boolean
+            questions_since:
+              type: string
+              format: date
+              nullable: true
+              description: The current raise's opening date when `past_raises` is false; null otherwise.
+            total:
+              type: integer
+              description: Questions matching, across all pages.
+            has_more:
+              type: boolean
+            page_count:
+              type: integer
+            next_cursor:
+              type: integer
+              nullable: true
+    CompanyEnvelope:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Company'
+    Company:
+      type: object
+      description: The company page as structured data. Monetary fields are USD decimal strings.
+      properties:
+        id:
+          type: string
+          description: The company's id (`co_...`).
+          example: co_8Kd0aB3xQ9k2vF8mNp1zT5wY
+        type:
+          type: string
+          example: company
+        attributes:
+          type: object
+          properties:
+            name:
+              type: string
+            tagline:
+              type: string
+              nullable: true
+            url:
+              type: string
+              nullable: true
+              description: The company's Wefunder page.
+            logo_url:
+              type: string
+              nullable: true
+            card_image_url:
+              type: string
+              nullable: true
+            location:
+              type: object
+              properties:
+                city:
+                  type: string
+                  nullable: true
+                state:
+                  type: string
+                  nullable: true
+                country:
+                  type: string
+                  nullable: true
+            raising:
+              type: boolean
+              description: True when the round the page shows this viewer is live (accepting investments or reservations). False for a funded company, or one with no round the viewer may see.
+            current_raise:
+              nullable: true
+              allOf:
+                - $ref: '#/components/schemas/CurrentRaise'
+              description: The live round the page shows, or null when `raising` is false. A funded company still has its history in `wefunder_rounds` and the page's ticker in `totals`.
+            past_rounds:
+              type: array
+              description: The prior rounds the company page's ticker folds in (its own accounting; see `totals.profile_*`). Not the company's full Wefunder history — that is `wefunder_rounds`.
+              items:
+                $ref: '#/components/schemas/PastRound'
+            wefunder_rounds:
+              type: array
+              description: Every round this company has run on Wefunder that the viewer may see, live and closed, newest first, each with its own metric. Independent of what the page's ticker chooses to include.
+              items:
+                $ref: '#/components/schemas/WefunderRound'
+            totals:
+              $ref: '#/components/schemas/CompanyTotals'
+    CurrentRaise:
+      type: object
+      description: The round the page shows this viewer, with its linked legs combined.
+      properties:
+        offering_id:
+          type: string
+          description: The displayed offering (`ofr_...`); fetch it with `/offerings/{id}`.
+        offering_ids:
+          type: array
+          description: Every live leg combined into `amount_raised` that the viewer may see (e.g. a Reg CF round and its Reg D round).
+          items:
+            type: string
+        testing_the_waters:
+          type: boolean
+          description: True when the current raise collects non-binding reservations, not investments.
+        amount_raised:
+          type: string
+          nullable: true
+          description: Raised across the combined legs, on Wefunder, USD decimal string.
+        funding_target:
+          type: string
+          nullable: true
+        investor_count:
+          type: integer
+          nullable: true
+        oversubscribed:
+          type: boolean
+        closes_at:
+          type: string
+          format: date-time
+          nullable: true
+    PastRound:
+      type: object
+      properties:
+        offering_id:
+          type: string
+          nullable: true
+          description: The Wefunder offering (`ofr_...`) when `source` is `wefunder`; null for a reported round.
+        source:
+          type: string
+          enum:
+            - wefunder
+            - reported
+          description: '`wefunder`: observed on this platform. `reported`: disclosed by the founder as raised off-platform (verified per the page''s rules, but not observed here).'
+        exemption:
+          $ref: '#/components/schemas/Exemption'
+        amount_raised:
+          type: string
+          nullable: true
+        investor_count:
+          type: integer
+          nullable: true
+        opened_at:
+          type: string
+          format: date-time
+          nullable: true
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
+    WefunderRound:
+      type: object
+      properties:
+        offering_id:
+          type: string
+          description: The round's offering id (`ofr_...`).
+        current:
+          type: boolean
+          description: True for the displayed round and any other live round.
+        status:
+          type: string
+          enum:
+            - open
+            - closed
+        exemption:
+          oneOf:
+            - $ref: '#/components/schemas/Exemption'
+          nullable: true
+        security:
+          oneOf:
+            - $ref: '#/components/schemas/Security'
+          nullable: true
+        amount_raised:
+          type: string
+          nullable: true
+          description: This round's own soft-confirmed amount, USD decimal string.
+        investor_count:
+          type: integer
+          nullable: true
+        opened_at:
+          type: string
+          format: date-time
+          nullable: true
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
+    CompanyTotals:
+      type: object
+      properties:
+        raised_on_wefunder_all_time:
+          type: string
+          nullable: true
+          description: Sum of `wefunder_rounds[].amount_raised` — everything this company has raised on Wefunder that the viewer may see. The lifetime figure.
+        profile_total_raised:
+          type: string
+          nullable: true
+          description: The number on the company page's ticker bar — the current raise plus the past rounds the page folds in (which may include founder-reported off-platform rounds and exclude older Wefunder rounds).
+        profile_reported_off_platform:
+          type: string
+          nullable: true
+          description: The founder-reported off-platform portion of `profile_total_raised`.
+        profile_includes_past_rounds:
+          type: boolean
+          nullable: true
+          description: Whether the page's ticker currently folds past rounds into its total. Null when the viewer may see no round (no ticker to read).
     Exemption:
       type: object
       description: The offering's SEC exemption, in market vocabulary.
@@ -3230,6 +6545,15 @@ components:
             - reg_a
             - reg_s
             - ecsp
+            - other
+          description: |
+            `other` appears only on a company's past rounds, for a reported round under an
+            exemption outside this list (e.g. Section 4(a)(2)).
+            `reg_cf` — Regulation Crowdfunding: open to all investors, with per-investor annual
+            limits set by the SEC; amounts and investor counts are public. `reg_d` — Regulation D
+            private placement: `506c` is open to verified accredited investors only and may be
+            advertised; `506b` is by invitation and never publicly listed. `reg_a`, `reg_s` and
+            `ecsp` exist in the data but are not filterable on `/explore`.
           example: reg_cf
         subtype:
           type: string
@@ -3240,6 +6564,267 @@ components:
           type: string
           description: Human-readable label in normal market language.
           example: Reg CF
+    TagRef:
+      type: object
+      description: A curated company tag — a machine value plus the label the site shows.
+      required:
+        - type
+        - label
+      properties:
+        type:
+          type: string
+          example: robotics
+        label:
+          type: string
+          example: Robotics
+    SecuritySummary:
+      type: object
+      description: |
+        The kind of security without its terms — the `type` / `label` pair shared by every
+        `Security` variant. Used where the terms live elsewhere (portfolio positions) or are
+        not final (a Testing-the-Waters round's `intended_security`).
+      required:
+        - type
+        - label
+      properties:
+        type:
+          type: string
+          enum:
+            - safe
+            - equity
+            - convertible_note
+            - revenue_share
+            - debt
+            - fund
+            - other
+          example: safe
+        label:
+          type: string
+          example: SAFE
+    Security:
+      description: |
+        What an offering issues. A discriminated union on `type`: every variant carries the same
+        `type` / `label` pair and a `terms` object whose fields are fixed per type. Money and rates
+        are USD decimal strings. Internal instrument codes never appear here.
+      oneOf:
+        - $ref: '#/components/schemas/SafeSecurity'
+        - $ref: '#/components/schemas/EquitySecurity'
+        - $ref: '#/components/schemas/ConvertibleNoteSecurity'
+        - $ref: '#/components/schemas/RevenueShareSecurity'
+        - $ref: '#/components/schemas/DebtSecurity'
+        - $ref: '#/components/schemas/FundSecurity'
+        - $ref: '#/components/schemas/OtherSecurity'
+      discriminator:
+        propertyName: type
+        mapping:
+          safe: '#/components/schemas/SafeSecurity'
+          equity: '#/components/schemas/EquitySecurity'
+          convertible_note: '#/components/schemas/ConvertibleNoteSecurity'
+          revenue_share: '#/components/schemas/RevenueShareSecurity'
+          debt: '#/components/schemas/DebtSecurity'
+          fund: '#/components/schemas/FundSecurity'
+          other: '#/components/schemas/OtherSecurity'
+    SafeSecurity:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - safe
+        label:
+          type: string
+          example: SAFE
+        terms:
+          type: object
+          properties:
+            valuation_cap:
+              type: string
+              nullable: true
+              description: Post-money valuation cap in USD, decimal string; null for an uncapped SAFE (never "0").
+              example: '10000000'
+            uncapped:
+              type: boolean
+              description: True when the SAFE has no valuation cap, as the deal page labels it. Always the inverse of `valuation_cap` being present.
+            discount_percent:
+              type: string
+              nullable: true
+              description: Discount to the next priced round, as a percentage; null when none.
+              example: '20'
+            most_favored_nation:
+              type: boolean
+              description: Whether the SAFE carries an MFN clause.
+            pro_rata:
+              type: boolean
+              description: Whether investors receive pro-rata rights in the next round.
+    EquitySecurity:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - equity
+        label:
+          type: string
+          example: Equity
+        terms:
+          type: object
+          properties:
+            share_price:
+              type: string
+              nullable: true
+              description: Price per share in USD, decimal string.
+              example: '2.5'
+            pre_money_valuation:
+              type: string
+              nullable: true
+              description: Pre-money valuation in USD, decimal string.
+              example: '15000000'
+            share_class:
+              type: string
+              nullable: true
+              enum:
+                - preferred
+                - common
+                - null
+              example: preferred
+    ConvertibleNoteSecurity:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - convertible_note
+        label:
+          type: string
+          example: Convertible Note
+        terms:
+          type: object
+          properties:
+            valuation_cap:
+              type: string
+              nullable: true
+              description: Valuation cap in USD, decimal string; null for an uncapped note (never "0").
+              example: '5000000'
+            uncapped:
+              type: boolean
+              description: True when the note has no valuation cap, as the deal page labels it.
+            discount_percent:
+              type: string
+              nullable: true
+              example: '20'
+            interest_rate_percent:
+              type: string
+              nullable: true
+              description: Annual interest, as a percentage.
+              example: '6'
+            maturity_months:
+              type: integer
+              nullable: true
+              example: 24
+            most_favored_nation:
+              type: boolean
+    RevenueShareSecurity:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - revenue_share
+        label:
+          type: string
+          example: Revenue Share
+        terms:
+          type: object
+          properties:
+            revenue_share_percent:
+              type: string
+              nullable: true
+              description: Share of revenue paid to investors each period, as a percentage.
+              example: '10'
+            repayment_cap_multiple:
+              type: string
+              nullable: true
+              description: Payments stop once investors have received this multiple of their investment.
+              example: '1.5'
+            payment_period:
+              type: string
+              nullable: true
+              example: quarterly
+            revenue_basis:
+              type: string
+              nullable: true
+              enum:
+                - gross
+                - net
+                - null
+            secured:
+              type: boolean
+            guarantor:
+              type: string
+              nullable: true
+    DebtSecurity:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - debt
+        label:
+          type: string
+          example: Debt
+        terms:
+          type: object
+          properties:
+            interest_rate_percent:
+              type: string
+              nullable: true
+              example: '8'
+            maturity_months:
+              type: integer
+              nullable: true
+              example: 36
+            first_payment_date:
+              type: string
+              format: date
+              nullable: true
+    FundSecurity:
+      type: object
+      description: An interest in a fund vehicle; the fund's own terms are on its profile, not per-offering.
+      properties:
+        type:
+          type: string
+          enum:
+            - fund
+        label:
+          type: string
+          example: Fund
+        terms:
+          type: object
+          properties: {}
+    OtherSecurity:
+      type: object
+      description: A security Wefunder does not model in detail; the founder's own name and description for it.
+      properties:
+        type:
+          type: string
+          enum:
+            - other
+        label:
+          type: string
+          example: Other
+        terms:
+          type: object
+          properties:
+            name:
+              type: string
+              nullable: true
+              example: Preferred Membership Units
+            description:
+              type: string
+              nullable: true
+            more_info_url:
+              type: string
+              nullable: true
     User:
       type: object
       properties:
@@ -3289,54 +6874,6 @@ components:
               format: date-time
               nullable: true
               example: '2023-02-01T14:20:00Z'
-    Investment:
-      type: object
-      properties:
-        id:
-          type: integer
-          example: 456
-        type:
-          type: string
-          example: investment
-        attributes:
-          type: object
-          properties:
-            amount:
-              type: number
-              format: float
-              example: 1000
-            state:
-              type: string
-              example: confirmed
-            confirmed_at:
-              type: string
-              format: date-time
-              nullable: true
-              example: '2023-03-15T12:00:00Z'
-            created_at:
-              type: string
-              format: date-time
-              example: '2023-03-10T10:30:00Z'
-            updated_at:
-              type: string
-              format: date-time
-              example: '2023-03-15T12:00:00Z'
-            fundraise_id:
-              type: integer
-              example: 789
-            campaign:
-              type: object
-              nullable: true
-              properties:
-                id:
-                  type: integer
-                  example: 789
-                company_name:
-                  type: string
-                  example: My Startup Inc.
-                company_id:
-                  type: integer
-                  example: 101
     Campaign:
       type: object
       properties:
@@ -3354,7 +6891,14 @@ components:
               example: active
             company_id:
               type: integer
+              deprecated: true
+              description: Internal integer id. Deprecated — use `company` (`co_...`) instead.
               example: 101
+            company:
+              type: string
+              nullable: true
+              description: The company's id (`co_...`).
+              example: co_8Kd0aB3xQ9k2vF8mNp1zT5wY
             company_name:
               type: string
               example: My Startup Inc.
@@ -3393,8 +6937,14 @@ components:
           type: boolean
           example: true
         next_cursor:
-          type: integer
+          oneOf:
+            - type: integer
+            - type: string
           nullable: true
+          description: |
+            Opaque cursor — pass back as `cursor` for the next page. An integer id for
+            id-paginated lists, an ISO 8601 timestamp for timestamp-paginated ones
+            (`/activity`). Absent or null on the last page.
           example: 12345
     Error:
       type: object
@@ -3913,9 +7463,27 @@ components:
               type: integer
               description: Number of linked deals (fundraises) in this syndicate
               example: 3
+            primary_fund_company_id:
+              type: integer
+              nullable: true
+              deprecated: true
+              description: Internal integer id. Deprecated — use `primary_fund_company` (`co_...`) instead.
+              example: 4242
+            primary_fund_company:
+              type: string
+              nullable: true
+              description: The primary fund company's id (`co_...`), when the syndicate has one.
+              example: co_8Kd0aB3xQ9k2vF8mNp1zT5wY
             created_by_user_id:
               type: integer
+              deprecated: true
+              description: Internal integer id. Deprecated — use `created_by` (`usr_...`) instead.
               example: 123
+            created_by:
+              type: string
+              nullable: true
+              description: The creating user's id (`usr_...`).
+              example: usr_8Kd0aB3xQ9k2vF8mNp1zT5wY
             created_at:
               type: string
               format: date-time
@@ -3933,8 +7501,9 @@ components:
       description: JSON:API resource representing a syndicate member (ClubRole)
       properties:
         id:
-          type: integer
-          example: 123
+          type: string
+          description: The member's id (`mem_...`); pass as member_id to the member endpoints.
+          example: mem_3StSZhDjMHzn8NzEkX0kgEuN
         type:
           type: string
           example: syndicate_member
@@ -3944,8 +7513,14 @@ components:
             user_id:
               type: integer
               nullable: true
-              description: User ID (null for invitees who haven't signed up)
+              deprecated: true
+              description: Internal integer id. Deprecated — use `user` (`usr_...`) instead.
               example: 123
+            user:
+              type: string
+              nullable: true
+              description: The member's user id (`usr_...`); null for invitees who haven't signed up.
+              example: usr_8Kd0aB3xQ9k2vF8mNp1zT5wY
             user_name:
               type: string
               nullable: true
@@ -3984,9 +7559,9 @@ components:
               description: Display order position
               example: 5
             carry_percentage_override:
-              type: string
+              type: integer
               nullable: true
-              example: '20.0'
+              example: 20
               description: Override carry percentage for this member
             avatar_url:
               type: string
@@ -4084,8 +7659,9 @@ components:
       description: JSON:API resource representing a syndicate deal (Fundraise)
       properties:
         id:
-          type: integer
-          example: 99
+          type: string
+          description: The deal's offering id (`ofr_...`). Same id `get_offering` / `explore_offerings` use.
+          example: ofr_yw3OhusvpfJP4Pk3wRYV1F2R
         type:
           type: string
           example: syndicate_deal
@@ -4095,17 +7671,28 @@ components:
             name:
               type: string
               example: Acme Corp Series A
-            state:
+            status:
               type: string
-              description: Fundraise state
+              enum:
+                - upcoming
+                - open
+                - closed
+                - canceled
+              description: Where the round is in its life (same values as an offering's `status`).
               example: open
             company_name:
               type: string
               example: Acme Corp
             company_id:
               type: integer
-              description: Company ID
+              deprecated: true
+              description: Internal integer id. Deprecated — use `company` (`co_...`) instead.
               example: 1234
+            company:
+              type: string
+              nullable: true
+              description: The company's id (`co_...`).
+              example: co_8Kd0aB3xQ9k2vF8mNp1zT5wY
             company_url:
               type: string
               nullable: true
@@ -4130,16 +7717,16 @@ components:
               nullable: true
               description: Target funding amount in cents, as a string
               example: '50000000'
-            offering_type:
-              type: string
+            exemption:
+              oneOf:
+                - $ref: '#/components/schemas/Exemption'
               nullable: true
-              description: Offering type (e.g. '506(c)', '4(a)(6)')
-              example: 506(c)
-            structure:
-              type: string
+              description: The SEC exemption the deal is offered under, in market vocabulary.
+            security:
+              oneOf:
+                - $ref: '#/components/schemas/Security'
               nullable: true
-              description: Deal structure (e.g. 'equity', 'safe', 'convertible_note')
-              example: safe
+              description: What the deal issues, as a discriminated union on `type` (see `Security`).
             min_investment:
               type: string
               nullable: true
@@ -4203,13 +7790,13 @@ components:
         do not have ids; each is described by its `terms`, and occasionally a round
         has more than one offering record with identical terms.
       properties:
-        structure:
-          type: string
+        security:
           nullable: true
+          allOf:
+            - $ref: '#/components/schemas/SecuritySummary'
           description: |
-            Security type (`safe`, `equity`, `convertible_note`, `revenue_share`,
-            `simple_loan`, `priced_round`, `fund`, `custom`). May be null on legacy
-            offerings — fall back to the position-level `structure`.
+            What this tier issues, as `{ type, label }` (the terms are in `terms` below).
+            May be null on legacy offerings — fall back to the position-level `security`.
         early_bird:
           type: boolean
         terms:
@@ -4314,9 +7901,11 @@ components:
                 - company
                 - fund
               description: '`fund` for SPV and fund vehicles; the underlying companies appear in `holdings` where recorded.'
-            structure:
-              type: string
-              description: The fundraise's security structure (`safe`, `equity`, `fund`, ...)
+            security:
+              nullable: true
+              allOf:
+                - $ref: '#/components/schemas/SecuritySummary'
+              description: What the round issued, as `{ type, label }`. Null when the round has no security recorded.
             status:
               type: string
               enum:
@@ -4498,9 +8087,9 @@ components:
         Only syndicate members' investments are included (scoped by member user IDs).
       properties:
         id:
-          type: integer
-          description: Investment ID
-          example: 12345
+          type: string
+          description: The investor's id (`usr_...`) — one row per investor, aggregated across their investments in the deal.
+          example: usr_aB3xQ9k2vF8mNp1zT5wY7Qc4
         type:
           type: string
           example: deal_investor
@@ -4509,8 +8098,13 @@ components:
           properties:
             user_id:
               type: integer
-              description: Investor's user ID
+              deprecated: true
+              description: Internal integer id. Deprecated — use `user` (`usr_...`) instead.
               example: 456
+            user:
+              type: string
+              description: The investor's id (`usr_...`).
+              example: usr_aB3xQ9k2vF8mNp1zT5wY7Qc4
             user_name:
               type: string
               nullable: true
@@ -4531,9 +8125,12 @@ components:
               type: string
               description: Investment amount in cents, as a string to avoid floating-point precision issues
               example: '500000'
-            state:
+            status:
               type: string
-              description: Investment state
+              enum:
+                - pending
+                - confirmed
+              description: The investor's most advanced commitment in this deal — `confirmed` is final, `pending` is committed but not yet final.
               example: confirmed
             invested_at:
               type: string
@@ -4547,9 +8144,9 @@ components:
         Scoped to the syndicate's selected deals (one per company, matching directory semantics).
       properties:
         id:
-          type: integer
-          description: Investment ID
-          example: 789
+          type: string
+          description: Investment id (`inv_...`).
+          example: inv_8Kd0aB3xQ9k2vF8mNp1zT5wY
         type:
           type: string
           example: member_investment
@@ -4558,8 +8155,14 @@ components:
           properties:
             fundraise_id:
               type: integer
-              description: Deal (fundraise) ID
+              deprecated: true
+              description: Internal integer id. Deprecated — use `offering` (`ofr_...`) instead.
               example: 75496
+            offering:
+              type: string
+              nullable: true
+              description: The deal's id (`ofr_...`), accepted by the deal endpoints.
+              example: ofr_8Kd0aB3xQ9k2vF8mNp1zT5wY
             company_name:
               type: string
               nullable: true
@@ -4569,9 +8172,12 @@ components:
               type: string
               description: Investment amount in cents, as a string to avoid floating-point precision issues
               example: '500000'
-            state:
+            status:
               type: string
-              description: Investment state
+              enum:
+                - pending
+                - confirmed
+              description: '`confirmed` is final; `pending` is committed but not yet final.'
               example: confirmed
             created_at:
               type: string
@@ -4631,8 +8237,8 @@ components:
       properties:
         id:
           type: string
-          format: uuid
-          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+          description: The intent's id (`int_...`). The `review_url` embeds the separate web (UUID) id.
+          example: int_aB3xQ9k2vF8mNp1zT5wY7Qc4
         type:
           type: string
           example: intent
@@ -4657,8 +8263,14 @@ components:
               type: string
               example: Club
             resource_id:
-              type: string
-              description: For Club resources, the syndicate's id (`syn_...`).
+              oneOf:
+                - type: string
+                - type: integer
+              nullable: true
+              description: |
+                For Club resources, the syndicate's id (`syn_...`). For every other
+                `resource_type` (contract change plans, tranches, applications, ...) the
+                resource's integer id, since those models have no external id yet.
               example: syn_aB3xQ9k2vF8mNp1zT5wY7Qc4
             impact_summary:
               type: string
@@ -4709,8 +8321,10 @@ components:
       description: JSON:API resource representing an audit event
       properties:
         id:
-          type: integer
-          example: 123
+          type: string
+          format: uuid
+          description: Event id (UUID).
+          example: 6f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f
         type:
           type: string
           example: audit_event
@@ -4727,6 +8341,7 @@ components:
               example: example
             actor_name:
               type: string
+              nullable: true
               example: ChatGPT via Wefunder MCP
             action:
               type: string
@@ -4735,8 +8350,14 @@ components:
               type: string
               example: Club
             resource_id:
-              type: string
-              description: For Club resources, the syndicate's id (`syn_...`).
+              oneOf:
+                - type: string
+                - type: integer
+              nullable: true
+              description: |
+                For Club resources, the syndicate's id (`syn_...`). For every other
+                `resource_type` (contract change plans, tranches, applications, ...) the
+                resource's integer id, since those models have no external id yet.
               example: syn_aB3xQ9k2vF8mNp1zT5wY7Qc4
             resource_label:
               type: string
@@ -4769,8 +8390,13 @@ components:
             intent_id:
               type: string
               nullable: true
-              description: Associated intent ID if this event was triggered by an intent
-              example: example
+              deprecated: true
+              description: Legacy UUID of the associated intent. Deprecated — use `intent` (`int_...`) instead.
+            intent:
+              type: string
+              nullable: true
+              description: The associated intent's id (`int_...`) if this event was triggered by an intent.
+              example: int_aB3xQ9k2vF8mNp1zT5wY7Qc4
             created_at:
               type: string
               format: date-time

@@ -14,7 +14,7 @@ import { paginate, collect, type Cursor, type Page } from "./pagination.js";
 import * as ops from "./generated/sdk.gen.js";
 import type {
   User,
-  Investment,
+  InvestmentDeltaRecord,
   Offering,
   Campaign,
   Syndicate,
@@ -24,12 +24,40 @@ import type {
   PortfolioSummaryEnvelope,
   ListOfferingsData,
   ListIntentsData,
+  ListInvestmentsData,
   GetPortfolioData,
   ListPortfolioPositionsData,
+  WebhookEndpoint,
+  WebhookEndpointListEnvelope,
+  WebhookEndpointTestResultEnvelope,
+  CreateWebhookEndpointData,
+  UpdateWebhookEndpointData,
+  DeleteWebhookEndpointResponses,
 } from "./generated/types.gen.js";
+import type { WebhookEventName } from "./webhooks.js";
+
+/** Body for `wf.webhookEndpoints.create()`. */
+export type CreateWebhookEndpointInput = CreateWebhookEndpointData["body"];
+/** Body for `wf.webhookEndpoints.update()` — `events` replaces the list wholesale. */
+export type UpdateWebhookEndpointInput = NonNullable<UpdateWebhookEndpointData["body"]>;
+/** The list envelope, with `meta.quota` (max endpoints per app). */
+export type WebhookEndpointList = WebhookEndpointListEnvelope;
+/** Outcome of `wf.webhookEndpoints.test()`. */
+export type WebhookTestOutcome = NonNullable<WebhookEndpointTestResultEnvelope["data"]>;
+/** Outcome of `wf.webhookEndpoints.remove()`. */
+export type WebhookEndpointRemoved = NonNullable<DeleteWebhookEndpointResponses[200]["data"]>;
 
 /** Documented `sort` values for the offerings list, from the generated op. */
 export type OfferingSort = NonNullable<ListOfferingsData["query"]>["sort"];
+/**
+ * An investment record as `GET /investments` and `GET /investments/{id}` return it
+ * (the Investment Delta shape — a full record or, for company audiences, a tombstone
+ * with `visible: false`).
+ */
+export type Investment = InvestmentDeltaRecord;
+/** Filters + sync controls for `GET /investments` (`cursor` is managed by auto-pagination). */
+export type InvestmentsQuery = NonNullable<ListInvestmentsData["query"]>;
+export type InvestmentsFilters = Omit<InvestmentsQuery, "cursor">;
 /** Documented `status` filter values for the intents list, from the generated op. */
 export type IntentStatus = NonNullable<ListIntentsData["query"]>["status"];
 /** Portfolio summary filters shared with the positions endpoint. */
@@ -270,10 +298,20 @@ export class Wefunder {
       ),
   };
 
+  /**
+   * Investments (`read:investments`). `list` is a bootstrap listing; pass `updated_since`
+   * or a saved `cursor` for sync mode (`meta.mode === "delta"`). Persist `meta.next_cursor`
+   * from your last page — it is always present — and resume from it next time.
+   */
   investments = {
-    list: this.#page<Investment>(ops.listInvestments as never),
-    all: (): AsyncGenerator<Investment> => paginate((cursor) => this.investments.list({ cursor })),
-    collect: (): Promise<Investment[]> => collect((cursor) => this.investments.list({ cursor })),
+    list: this.#page<Investment, InvestmentsQuery>(ops.listInvestments as never),
+    all: (query?: InvestmentsFilters): AsyncGenerator<Investment> =>
+      paginate((cursor) => this.investments.list({ ...query, cursor: cursor as string | undefined })),
+    collect: (query?: InvestmentsFilters): Promise<Investment[]> =>
+      collect((cursor) => this.investments.list({ ...query, cursor: cursor as string | undefined })),
+    /** The current record (not the published projection) for one investment (`inv_…`). */
+    get: (id: string) =>
+      this.#unwrapData<Investment>(ops.getInvestment({ client: this.#client, path: { id } })),
   };
 
   portfolio = {
@@ -321,5 +359,61 @@ export class Wefunder {
 
   attribution = {
     me: () => this.#unwrapData<AttributionMe>(ops.getAttributionMe({ client: this.#client })),
+  };
+
+  /**
+   * Webhook endpoints (`/webhook_endpoints`, scopes `read:webhooks` / `write:webhooks`).
+   * Endpoints belong to your application and are managed through the LIVE API —
+   * create sandbox receivers there with `mode: "test"`; they're mirrored into
+   * sandbox. The signing `secret` is returned ONLY by `create` and `rotateSecret`.
+   * Verify deliveries with `constructEvent` (see the webhooks module).
+   */
+  webhookEndpoints = {
+    /** All of your app's endpoints (secret omitted). `meta.quota` is the per-app limit. */
+    list: (): Promise<WebhookEndpointList> =>
+      this.#unwrap<WebhookEndpointList>(ops.listWebhookEndpoints({ client: this.#client })),
+    get: (id: string) =>
+      this.#unwrapData<WebhookEndpoint>(
+        ops.getWebhookEndpoint({ client: this.#client, path: { external_id: id } }),
+      ),
+    /** Store `attributes.secret` from the result — it is never shown again. */
+    create: (input: CreateWebhookEndpointInput) =>
+      this.#unwrapData<WebhookEndpoint>(ops.createWebhookEndpoint({ client: this.#client, body: input })),
+    /** `events` replaces the subscription list wholesale (no merge); omit to leave unchanged. */
+    update: (id: string, input: UpdateWebhookEndpointInput) =>
+      this.#unwrapData<WebhookEndpoint>(
+        ops.updateWebhookEndpoint({ client: this.#client, path: { external_id: id }, body: input }),
+      ),
+    /** Stops deliveries immediately. Removal is permanent — create a new endpoint to resume. */
+    remove: (id: string) =>
+      this.#unwrapData<WebhookEndpointRemoved>(
+        ops.deleteWebhookEndpoint({ client: this.#client, path: { external_id: id } }),
+      ),
+    /**
+     * New secret (shown once). The old one keeps signing for a 24h overlap — deliveries
+     * carry a `v1` for both, and `constructEvent` accepts either.
+     */
+    rotateSecret: (id: string) =>
+      this.#unwrapData<WebhookEndpoint>(
+        ops.rotateWebhookEndpointSecret({ client: this.#client, path: { external_id: id } }),
+      ),
+    /** Recover an auto-disabled endpoint after fixing your server. Idempotent. */
+    reenable: (id: string) =>
+      this.#unwrapData<WebhookEndpoint>(
+        ops.reenableWebhookEndpoint({ client: this.#client, path: { external_id: id } }),
+      ),
+    /**
+     * POST a real, signed example event at the endpoint (production envelope + signature)
+     * and report the outcome inline. Defaults to the endpoint's first subscribed event.
+     * Doesn't affect delivery health. Rate-limited to 10/min per endpoint.
+     */
+    test: (id: string, event?: WebhookEventName) =>
+      this.#unwrapData<WebhookTestOutcome>(
+        ops.testWebhookEndpoint({
+          client: this.#client,
+          path: { external_id: id },
+          body: event ? { event } : undefined,
+        }),
+      ),
   };
 }
