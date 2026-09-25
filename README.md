@@ -264,6 +264,14 @@ npm run build
 
 Generated files in `src/generated/` come from `spec/openapi.yaml` and should not be edited by hand.
 
+### Conformance vectors
+
+`conformance/*.json` is the cross-language behavioural contract shared with the Python and Ruby
+SDKs (signatures, token rotation, pagination, retries, errors). `test/conformance.test.ts` runs
+every case; the vectors are frozen — fix the shell, not the vector. After deliberately changing
+one, run `npm run build:conformance` to refresh `conformance/manifest.json`. See
+[`conformance/README.md`](conformance/README.md).
+
 ### Updating the API specification
 
 Run the sync command against a local checkout of the Wefunder application, then regenerate the client:
