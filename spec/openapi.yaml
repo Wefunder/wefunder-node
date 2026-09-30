@@ -14,6 +14,13 @@ info:
     3. Implement the OAuth 2.0 Authorization Code flow
     4. Use the access token to make API requests
 
+    ## Versioning
+
+    The API is versioned by the dated `Wefunder-Version` request header (`YYYY-MM-DD`), never by
+    the URL. Resolution is header → your application's pinned version → latest; every response
+    carries `Wefunder-Version` (the version that handled it) and `Wefunder-Version-Latest`. An
+    unknown value returns `400 invalid_request` naming the valid versions. Current: `2026-10-01`.
+
     ## Rate Limits
 
     - Standard API: 1,000 requests/hour per token
@@ -21,19 +28,14 @@ info:
 
     ## Base URL
 
-    All API requests should be made to: `https://api.wefunder.com/api/v2`
+    All API requests should be made to: `https://api.wefunder.com` (no version in the path).
   version: '2.0'
   contact:
     name: Wefunder API Support
     email: api@wefunder.com
 servers:
-  - url: https://{environment}.wefunder.com/api/v2
-    variables:
-      environment:
-        default: api
-        enum:
-          - api
-          - staging
+  - url: https://api.wefunder.com
+    description: One host for live and sandbox; the credential prefix (pk_live_ / pk_test_) selects the environment. There is currently one API version and no version appears in the path.
 paths:
   /explore:
     get:
@@ -308,7 +310,7 @@ paths:
           label: '@wefunder/sdk'
           source: |-
             const offering = await wf.offerings.get("ofr_QfmTyP8qjfYAvkEgREyL3kLf");
-            console.log(offering.attributes?.company_name, offering.attributes?.state);
+            console.log(offering.attributes?.company_name, offering.attributes?.status);
   /companies/{id}/disclosures:
     get:
       tags:
@@ -388,6 +390,17 @@ paths:
           description: Unknown or hidden company (`error.type` = `not_found`), or no public Form C disclosures (`error.type` = `no_disclosures`).
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const { data: disclosures } = await wf.unwrap(
+              wf.raw.getCompanyDisclosures({
+                path: { id: "co_abc123Example" },
+                query: { sections: ["business", "risks", "use_of_funds"] },
+              }),
+            );
+            console.log(disclosures?.attributes);
   /companies/{id}/pitch:
     get:
       tags:
@@ -455,6 +468,14 @@ paths:
           description: Unknown or hidden company.
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const { data: pitch } = await wf.unwrap(
+              wf.raw.getCompanyPitch({ path: { id: "co_abc123Example" }, query: { sections: ["story", "perks"] } }),
+            );
+            console.log(pitch?.attributes);
   /companies/{id}/updates:
     get:
       tags:
@@ -504,6 +525,13 @@ paths:
           description: Unknown company, or one the site does not show this viewer.
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const page = await wf.unwrap(wf.raw.listCompanyUpdates({ path: { id: "co_abc123Example" }, query: { per_page: 10 } }));
+            for (const update of page.data ?? []) console.log(update.id, update.attributes?.title);
+            console.log(page.meta?.next_cursor);
   /companies/{id}/updates/{update_id}:
     get:
       tags:
@@ -540,6 +568,14 @@ paths:
           description: Unknown company or post, or one the site does not show this viewer.
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const { data: update } = await wf.unwrap(
+              wf.raw.getCompanyUpdate({ path: { id: "co_abc123Example", update_id: "upd_9t2xExample" } }),
+            );
+            console.log(update?.attributes?.title);
   /companies/{id}/questions:
     get:
       tags:
@@ -625,6 +661,17 @@ paths:
           description: Unknown company, or one the site does not show this viewer.
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const page = await wf.unwrap(
+              wf.raw.listCompanyQuestions({
+                path: { id: "co_abc123Example" },
+                query: { q: "revenue", unanswered_by_team: true, per_page: 20 },
+              }),
+            );
+            for (const question of page.data ?? []) console.log(question.id, question.attributes);
   /companies/search:
     get:
       tags:
@@ -681,6 +728,12 @@ paths:
           $ref: '#/components/responses/RateLimitExceeded'
         '503':
           description: The search provider failed; retry. Not "no results".
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const results = await wf.unwrap(wf.raw.searchCompanies({ query: { q: "solar", limit: 5 } }));
+            for (const hit of results.data ?? []) console.log(hit.id, hit.attributes?.name);
   /companies/{id}:
     get:
       tags:
@@ -732,6 +785,12 @@ paths:
           description: Unknown id, or a company the viewer may not see.
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const { data: company } = await wf.unwrap(wf.raw.getCompany({ path: { id: "co_abc123Example" } }));
+            console.log(company?.attributes?.name);
   /users/me:
     get:
       tags:
@@ -796,6 +855,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const companies = await wf.unwrap(wf.raw.listMyCompanies());
+            for (const company of companies.data ?? []) console.log(company.id, company.attributes?.name);
   /users/me/follows:
     get:
       tags:
@@ -832,6 +897,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const page = await wf.unwrap(wf.raw.listFollowedCompanies({ query: { per_page: 25 } }));
+            for (const company of page.data ?? []) console.log(company.id);
   /users/me/follows/{company_id}:
     put:
       tags:
@@ -870,6 +941,12 @@ paths:
           description: Unknown company, or one the site does not show this user.
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const result = await wf.unwrap(wf.raw.followCompany({ path: { company_id: "co_abc123Example" } }));
+            console.log(result);
     delete:
       tags:
         - Users
@@ -901,6 +978,12 @@ paths:
           description: Unknown company.
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const result = await wf.unwrap(wf.raw.unfollowCompany({ path: { company_id: "co_abc123Example" } }));
+            console.log(result);
   /investments:
     get:
       tags:
@@ -1058,6 +1141,12 @@ paths:
           description: Not found, not in the token's audience, or not visible to it.
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const investment = await wf.investments.get("inv_8f3kQ2Example");
+            console.log(investment.status, investment.amounts?.committed_cents, investment.investor?.id);
   /offerings/{offering_id}/stats:
     get:
       tags:
@@ -1093,6 +1182,91 @@ paths:
           description: The token's user does not edit the offering's company.
         '404':
           description: Unknown offering.
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const { data: stats } = await wf.unwrap(
+              wf.raw.getOfferingStats({ path: { offering_id: "ofr_QfmTyP8qjfYAvkEgREyL3kLf" } }),
+            );
+            console.log(stats);
+  /companies/{company_id}/investments/changes:
+    get:
+      tags:
+        - Investment Delta
+      summary: Bootstrap or page investment changes for a company
+      description: |
+        The Investment Delta API: keep a copy of a company's investment records in sync by
+        polling. Call without `cursor` to **bootstrap** (list every current record for the
+        company); every response carries `meta.next_cursor`; call again with that cursor to
+        receive only the records whose published state changed since. Records are the same
+        shape in both modes.
+
+        - Records are **published state**, not live rows: Wefunder publishes a record when the
+          investment's founder-visible state changes, and serves exactly what was published.
+        - `visible: false` records are **tombstones**: the investment is no longer visible to the
+          company (canceled, converted to another round, hidden, or deleted). Delete your copy.
+        - Apply records in `cursor` order. `observed_at` is when the payload was observed, not a
+          version; a record you read late carries the *current* published state.
+        - **410 Gone** means your cursor predates the 90-day retention window. Bootstrap again and
+          **replace** your dataset for the company from the result (records absent from the
+          bootstrap are deleted).
+        - Investor identity fields (`investor.name`, `investor.legal_name`, `investor.email`,
+          `investor.address`, `investor.bio`, `message`, `external_username`) are **omitted**
+          unless the token carries `read:investors:pii`.
+        - Money is integer minor units plus `amounts.currency` (`committed_cents`,
+          `investment_size_cents`, `in_escrow_cents`, `contracts[].override_amount_cents`).
+          `shares` and `average_share_price` are decimal strings, `null` on rounds without shares.
+          `amounts.raised_cents` is the row's contribution to the public raised figure (0 while
+          `needs_whitelisting`); sum it, not `committed_cents`, to match the deal page.
+      operationId: listCompanyInvestmentChanges
+      security:
+        - bearerAuth:
+            - read:investments
+        - bearerAuth:
+            - read:companies
+      parameters:
+        - name: company_id
+          in: path
+          required: true
+          description: The company's external id (`co_…`).
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          required: false
+          description: |
+            Opaque cursor from a previous response's `meta.next_cursor`. Omit to bootstrap.
+          schema:
+            type: string
+        - name: per_page
+          in: query
+          required: false
+          description: Records per page, 1–100 (default 25). Delta pages count distinct investments.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 25
+      responses:
+        '200':
+          description: A page of records.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvestmentChangeListEnvelope'
+        '400':
+          description: Malformed cursor.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Token lacks both `read:investments` and `read:companies`, or the user cannot edit this company.
+        '410':
+          description: |
+            The cursor is older than the retention window. Bootstrap again (no cursor) and replace
+            your stored records for this company.
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
   /portfolio:
@@ -1149,6 +1323,15 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const summary = await wf.portfolio.get();
+            console.log(
+              summary.attributes?.total_current_value_cents,
+              summary.attributes?.return_multiple,
+            );
   /portfolio/positions:
     get:
       tags:
@@ -1220,6 +1403,17 @@ paths:
                 $ref: '#/components/schemas/Error'
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            for await (const position of wf.portfolio.positions.all({ status: "active" })) {
+              console.log(
+                position.id,
+                position.attributes?.company?.name,
+                position.attributes?.current_value_cents,
+              );
+            }
   /campaigns:
     get:
       tags:
@@ -1288,14 +1482,14 @@ paths:
           in: query
           schema:
             type: string
-          description: Pagination cursor from previous response
-        - name: limit
+          description: Opaque cursor from the previous response's `meta.next_cursor`.
+        - name: per_page
           in: query
           schema:
             type: integer
             default: 25
             maximum: 100
-          description: Results per page
+          description: Results per page, 1-100. Defaults to 25.
       responses:
         '200':
           description: Successful response
@@ -1436,12 +1630,14 @@ paths:
           schema:
             type: string
             enum:
-              - relevance
               - newest
               - oldest
               - alphabetical
               - last_activity
-          description: Sort order for results
+              - investment_amount
+          description: |
+            Sort order. `investment_amount` (highest total invested first) is **moderator-only**;
+            non-moderators requesting it get the default order. Unknown values fall back to the default.
         - name: has_invested
           in: query
           schema:
@@ -1456,12 +1652,30 @@ paths:
             type: string
             enum:
               - 'true'
-          description: Filter to accredited members only
+              - 'false'
+          description: '**Moderator-only.** Filter by accreditation status; ignored for non-moderators.'
         - name: tag
           in: query
           schema:
             type: string
           description: Filter by 'can help with' tag (ILIKE match)
+        - name: location
+          in: query
+          schema:
+            type: string
+          description: Match on city, state, or country (public location data only).
+        - name: cursor
+          in: query
+          schema:
+            type: string
+          description: Opaque cursor from the previous response's `meta.next_cursor`.
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 25
+            maximum: 100
+          description: Results per page, 1-100. Defaults to 25.
       responses:
         '200':
           description: Successful response
@@ -1554,8 +1768,10 @@ paths:
                       type: string
                       example: Lead Investor
                     carry_percentage_override:
-                      type: string
-                      example: '20.0'
+                      type: integer
+                      minimum: 1
+                      maximum: 100
+                      example: 20
       responses:
         '200':
           description: Member updated
@@ -1574,7 +1790,7 @@ paths:
       description: |
         Removing a member is irreversible and requires human approval through the Intent system.
         This endpoint always returns 422 with a `use_intents` error directing you to
-        `POST /v2/intents` with action `syndicates.remove_member`.
+        `POST /intents` with action `syndicates.remove_member`.
       operationId: removeSyndicateMember
       security:
         - bearerAuth:
@@ -1753,10 +1969,11 @@ paths:
                   type: array
                   items:
                     type: string
+                  description: Member ids as returned by the list endpoint (`mem_…`), in the desired display order. Unknown ids return 404 and change nothing.
                   example:
-                    - cr_123
-                    - cr_456
-                    - cr_789
+                    - mem_8Kd0aB3xQ9k2
+                    - mem_vF8mNp1zT5wY
+                    - mem_2Lq7cR4sX0bE
       responses:
         '200':
           description: Order updated
@@ -1794,13 +2011,28 @@ paths:
       tags:
         - Syndicate Deals
       summary: List deals
-      description: Returns all deals (fundraises) within a syndicate with status, terms, and metrics.
+      description: |
+        Returns the syndicate's **live** deals (open, oversubscribed, or closing) with status,
+        terms, and metrics. Closed and upcoming rounds are not listed; `statistics.total_deals`
+        counts all linked rounds.
       operationId: listSyndicateDeals
       security:
         - bearerAuth:
             - read:syndicates
       parameters:
         - $ref: '#/components/parameters/syndicate_id'
+        - name: cursor
+          in: query
+          schema:
+            type: string
+          description: Opaque cursor from the previous response's `meta.next_cursor`.
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 25
+            maximum: 100
+          description: Results per page, 1-100. Defaults to 25.
       responses:
         '200':
           description: Successful response
@@ -1854,7 +2086,10 @@ paths:
         The `user_email` field is **moderator-only** — it returns null for non-moderator
         callers (i.e., users who are not a manager/operator of the syndicate).
 
-        All monetary values are strings representing cents to avoid floating-point precision issues.
+        `amount` is whole dollars as a string (e.g. `"5000"` is $5,000).
+
+        Offset-paginated: pass `offset` and `per_page`; `meta` carries `total_count`,
+        `offset`, `per_page`, and `has_more`. Without `per_page` the full list is returned.
       operationId: listSyndicateDealInvestors
       security:
         - bearerAuth:
@@ -1862,18 +2097,18 @@ paths:
       parameters:
         - $ref: '#/components/parameters/syndicate_id'
         - $ref: '#/components/parameters/fundraise_id'
-        - name: cursor
-          in: query
-          schema:
-            type: string
-          description: Pagination cursor from previous response
-        - name: limit
+        - name: offset
           in: query
           schema:
             type: integer
-            default: 25
-            maximum: 100
-          description: Results per page
+            default: 0
+          description: Number of investors to skip.
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            maximum: 200
+          description: Results per page, 1-200. Omit to return every investor.
       responses:
         '200':
           description: Successful response
@@ -1898,9 +2133,9 @@ paths:
       summary: List member investments
       description: |
         Returns this member's investments in syndicate deals. Scoped to the syndicate's
-        selected deals (one per company, matching directory semantics).
+        selected deals (one per company, matching directory semantics). **Moderator-only.**
 
-        All monetary values are strings representing cents to avoid floating-point precision issues.
+        `amount` and `meta.total_amount` are whole dollars as strings.
       operationId: listSyndicateMemberInvestments
       security:
         - bearerAuth:
@@ -1937,7 +2172,7 @@ paths:
         `total_raised` and `total_investors` are computed from directory-selected deals
         (one per company). `total_deals` and `live_deals` use all linked deals.
 
-        All monetary values are strings representing cents to avoid floating-point precision issues.
+        `total_raised` is whole dollars as a string.
       operationId: getSyndicateStatistics
       security:
         - bearerAuth:
@@ -2021,6 +2256,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const { data: summary } = await wf.unwrap(
+              wf.raw.getSyndicatePortfolio({
+                path: { syndicate_id: "syn_example" },
+              }),
+            );
+            console.log(summary?.attributes?.total_current_value_cents);
   /syndicates/{syndicate_id}/portfolio/positions:
     get:
       tags:
@@ -2090,6 +2335,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const page = await wf.unwrap(
+              wf.raw.listSyndicatePortfolioPositions({
+                path: { syndicate_id: "syn_example" },
+                query: { status: "active", per_page: 25 },
+              }),
+            );
+            for (const position of page.data ?? []) {
+              console.log(position.id, position.attributes?.investor_count);
+            }
   /syndicates/{syndicate_id}/deals/{fundraise_id}/close:
     post:
       tags:
@@ -2228,6 +2486,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const preview = await wf.unwrap(
+              wf.raw.previewIntent({
+                body: {
+                  action_name: "syndicates.close_deal",
+                  resource_type: "Club",
+                  resource_id: "syn_example",
+                  params: { fundraise_id: 99 },
+                },
+              }),
+            );
+            console.log(preview);
   /intents:
     post:
       tags:
@@ -2257,11 +2530,16 @@ paths:
         existing intent (200) while that intent is pending, approved, executing, or executed;
         reusing it for a different action, resource, or params is a 409 `idempotency_conflict`.
 
+        An action still rolling out per account returns 403 `feature_disabled` for a user who is
+        not yet enabled. `POST /intents/preview` runs the same checks without minting.
+
         See [Intents documentation](/concepts/intents) for the full pattern.
       operationId: createIntent
       security:
         - bearerAuth:
             - write:syndicates
+        - bearerAuth:
+            - write:comments
       requestBody:
         required: true
         content:
@@ -2343,7 +2621,7 @@ paths:
                 body: {
                   action_name: "syndicates.close_deal",
                   resource_type: "Club",
-                  resource_id: 42,
+                  resource_id: "syn_example",
                   params: { fundraise_id: 99 },
                   // Safe to retry: an existing pending/executed intent with this key is returned instead.
                   idempotency_key: "close-acme-series-a",
@@ -2387,11 +2665,13 @@ paths:
           in: query
           schema:
             type: string
-        - name: limit
+          description: Opaque cursor from the previous response's `meta.next_cursor`.
+        - name: per_page
           in: query
           schema:
             type: integer
             default: 25
+            maximum: 100
       responses:
         '200':
           description: Successful response
@@ -2508,7 +2788,8 @@ paths:
           in: query
           schema:
             type: string
-        - name: limit
+          description: Opaque cursor from the previous response's `meta.next_cursor`.
+        - name: per_page
           in: query
           schema:
             type: integer
@@ -2756,6 +3037,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const installs = await wf.unwrap(wf.raw.listInstallations());
+            for (const install of installs.data ?? []) console.log(install.id, install.attributes);
     post:
       tags:
         - Installations
@@ -2815,6 +3102,16 @@ paths:
           description: Already installed here; `error.details.installation` is the existing install's id.
         '422':
           description: Unknown `target_type`, or none of the requested scopes can be granted by the caller's role.
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const install = await wf.unwrap(
+              wf.raw.createInstallation({
+                body: { target_type: "company", target_id: "co_abc123Example", scopes: ["read:offerings", "read:investments"] },
+              }),
+            );
+            console.log(install.data?.id, install.data?.attributes);
   /installations/eligible:
     get:
       tags:
@@ -2846,6 +3143,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const targets = await wf.unwrap(wf.raw.listEligibleInstallTargets({ query: { target_type: "company" } }));
+            for (const target of targets.data ?? []) console.log(target);
   /installations/{external_id}:
     parameters:
       - name: external_id
@@ -2873,6 +3176,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const { data: install } = await wf.unwrap(wf.raw.getInstallation({ path: { external_id: "ins_9t2xExample" } }));
+            console.log(install?.attributes);
     delete:
       tags:
         - Installations
@@ -2897,6 +3206,12 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const result = await wf.unwrap(wf.raw.revokeInstallation({ path: { external_id: "ins_9t2xExample" } }));
+            console.log(result);
   /installations/{external_id}/tokens:
     post:
       tags:
@@ -2943,6 +3258,14 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           description: The installation has been revoked.
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const token = await wf.unwrap(
+              wf.raw.createInstallationToken({ path: { external_id: "ins_9t2xExample" }, body: { scopes: ["read:investments"] } }),
+            );
+            console.log(token.data);
   /webhook_endpoints:
     get:
       tags:
@@ -2966,6 +3289,15 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const { data: endpoints, meta } = await wf.webhookEndpoints.list();
+            console.log(`${endpoints?.length} of ${meta?.quota} endpoint slots used`);
+            for (const ep of endpoints ?? []) {
+              console.log(ep.id, ep.attributes?.url, ep.attributes?.enabled, ep.attributes?.last_delivery_status);
+            }
     post:
       tags:
         - Webhook Endpoints
@@ -3050,6 +3382,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const endpoint = await wf.webhookEndpoints.create({
+              url: "https://yourapp.com/webhooks/wefunder", // public HTTPS (localhost/private IPs rejected)
+              events: ["offering.opened", "investment.executed", "investment.changed"],
+              mode: "live",
+            });
+            // Store this now — it's needed by constructEvent() and is never shown again.
+            const signingSecret = endpoint.attributes?.secret;
+            console.log(endpoint.id, signingSecret);
   /webhook_endpoints/{external_id}:
     get:
       tags:
@@ -3075,6 +3419,12 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const endpoint = await wf.webhookEndpoints.get("whe_8f3ExampleEndpoint00");
+            console.log(endpoint.attributes?.events, endpoint.attributes?.failing_since);
     patch:
       tags:
         - Webhook Endpoints
@@ -3145,6 +3495,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const endpoint = await wf.webhookEndpoints.update("whe_8f3ExampleEndpoint00", {
+              events: ["offering.opened", "offering.closed", "investment.executed"],
+            });
+            console.log(endpoint.attributes?.events);
     delete:
       tags:
         - Webhook Endpoints
@@ -3183,6 +3541,12 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const result = await wf.webhookEndpoints.remove("whe_8f3ExampleEndpoint00");
+            console.log(result.removed); // true
   /webhook_endpoints/{external_id}/rotate_secret:
     post:
       tags:
@@ -3211,6 +3575,13 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const endpoint = await wf.webhookEndpoints.rotateSecret("whe_8f3ExampleEndpoint00");
+            const newSecret = endpoint.attributes?.secret; // shown once
+            console.log(newSecret);
   /webhook_endpoints/{external_id}/reenable:
     post:
       tags:
@@ -3239,6 +3610,12 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const endpoint = await wf.webhookEndpoints.reenable("whe_8f3ExampleEndpoint00");
+            console.log(endpoint.attributes?.enabled); // true
   /webhook_endpoints/{external_id}/test:
     post:
       tags:
@@ -3308,6 +3685,16 @@ paths:
                 $ref: '#/components/schemas/Error'
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
+      x-codeSamples:
+        - lang: JavaScript
+          label: '@wefunder/sdk'
+          source: |-
+            const outcome = await wf.webhookEndpoints.test("whe_8f3ExampleEndpoint00", "investment.executed");
+            if (outcome.delivered) {
+              console.log(`endpoint answered ${outcome.response_code} in ${outcome.duration_ms}ms`);
+            } else {
+              console.log(`no response: ${outcome.error}`); // timeout | blocked_url | tls_error | connection_failed
+            }
   /campaigns/{campaign_id}/attribution/webhooks:
     get:
       tags:
@@ -3888,6 +4275,18 @@ components:
           scopes:
             read:public: Read public deal data. The only scope a server-side (client_credentials) key may hold — it acts as the app, with no user, so it can never read user-scoped data.
   parameters:
+    wefunder_version:
+      name: Wefunder-Version
+      in: header
+      required: false
+      description: |
+        Dated API version (`YYYY-MM-DD`). Omit to use your application's pinned version.
+        Unknown values return `400 invalid_request`. Every response echoes the resolved
+        version in `Wefunder-Version` and the newest in `Wefunder-Version-Latest`.
+      schema:
+        type: string
+        pattern: ^\d{4}-\d{2}-\d{2}$
+      example: '2026-10-01'
     campaign_id:
       name: campaign_id
       in: path
@@ -4609,11 +5008,18 @@ components:
         meta:
           type: object
           properties:
-            has_more:
-              type: boolean
             count:
               type: integer
               description: Number of investors on this page
+            total_count:
+              type: integer
+              description: Total investors in the deal
+            offset:
+              type: integer
+            per_page:
+              type: integer
+            has_more:
+              type: boolean
     MemberInvestmentListEnvelope:
       type: object
       properties:
@@ -4629,8 +5035,8 @@ components:
               description: Number of investments
             total_amount:
               type: string
-              description: Sum of all investment amounts in cents, as a string
-              example: '800000'
+              description: Sum of all investment amounts in whole dollars, as a string
+              example: '8000'
     OfferingListEnvelope:
       type: object
       properties:
@@ -4700,10 +5106,7 @@ components:
           items:
             $ref: '#/components/schemas/SyndicateDeal'
         meta:
-          type: object
-          properties:
-            count:
-              type: integer
+          $ref: '#/components/schemas/PaginationMeta'
     WebhookSubscriptionListEnvelope:
       type: object
       properties:
@@ -5183,7 +5586,7 @@ components:
       type: object
       properties:
         data:
-          $ref: '#/components/schemas/SyndicateDealDetail'
+          $ref: '#/components/schemas/SyndicateDeal'
     SyndicateDealEnvelope:
       type: object
       properties:
@@ -5215,7 +5618,7 @@ components:
       type: object
       properties:
         data:
-          $ref: '#/components/schemas/SyndicateDetail'
+          $ref: '#/components/schemas/Syndicate'
     SyndicateListEnvelope:
       type: object
       properties:
@@ -6829,8 +7232,9 @@ components:
       type: object
       properties:
         id:
-          type: integer
-          example: 123
+          type: string
+          description: Partner-facing user id (`usr_…`).
+          example: usr_8Kd0aB3xQ9k2vF8mNp1zT5wY
         type:
           type: string
           example: user
@@ -6930,8 +7334,9 @@ components:
     PaginationMeta:
       type: object
       properties:
-        count:
+        page_count:
           type: integer
+          description: Number of records on this page.
           example: 25
         has_more:
           type: boolean
@@ -7456,12 +7861,46 @@ components:
               type: boolean
               description: Whether the syndicate is accepting new members (nil defaults to true)
               example: true
+            syndicate_type:
+              type: string
+              nullable: true
+              description: How the syndicate invests (e.g. `annual_subscription`, `traditional_fund`); null for deal-by-deal syndicates.
+            auto_accept_accredited_members:
+              type: boolean
+              description: Whether accredited applicants are approved automatically.
+              example: false
+            fund_required:
+              type: boolean
+              description: Whether members must invest through the syndicate's fund.
+              example: false
+            annual_subscription:
+              type: object
+              description: Present only when `syndicate_type` is `annual_subscription`.
+              properties:
+                fund_investment_amount:
+                  type: string
+                  nullable: true
+                deals_per_year:
+                  type: integer
+                  nullable: true
+                amount_per_deal:
+                  type: string
+                  nullable: true
+            traditional_fund:
+              type: object
+              description: Present only when `syndicate_type` is `traditional_fund`.
+              properties:
+                require_minimum_investment:
+                  type: boolean
+                minimum_investment_amount:
+                  type: string
+                  nullable: true
             member_count:
               type: integer
               example: 47
             deal_count:
               type: integer
-              description: Number of linked deals (fundraises) in this syndicate
+              description: Number of live deals (the same set `GET /syndicates/{syndicate_id}/deals` returns)
               example: 3
             primary_fund_company_id:
               type: integer
@@ -7492,10 +7931,6 @@ components:
               type: string
               format: date-time
               example: '2025-03-01T12:00:00Z'
-    SyndicateDetail:
-      description: Same as Syndicate (show and index use the same serializer)
-      allOf:
-        - $ref: '#/components/schemas/Syndicate'
     SyndicateMember:
       type: object
       description: JSON:API resource representing a syndicate member (ClubRole)
@@ -7561,8 +7996,50 @@ components:
             carry_percentage_override:
               type: integer
               nullable: true
+              minimum: 1
+              maximum: 100
               example: 20
               description: Override carry percentage for this member
+            carry_discount_percentage:
+              type: number
+              nullable: true
+              description: Carry discount granted to this member, in percent.
+            management_fee_discount_percentage:
+              type: number
+              nullable: true
+              description: Management fee discount granted to this member, in percent.
+            public_on_syndicate_profile:
+              type: boolean
+              description: Whether the member is listed on the public syndicate page.
+              example: true
+            interests:
+              type: array
+              items:
+                type: string
+              description: Investor interest tags from the user's profile. Empty for invitees.
+            stage_preferences:
+              type: array
+              items:
+                type: string
+              description: Investment stage preference tags. Empty for invitees.
+            looking_for:
+              type: array
+              items:
+                type: string
+              description: '''Looking for'' tags from the user''s profile. Empty for invitees.'
+            linkedin_url:
+              type: string
+              nullable: true
+            twitter_url:
+              type: string
+              nullable: true
+            website:
+              type: string
+              nullable: true
+            state:
+              type: string
+              nullable: true
+              description: User's state or region. Omitted, with city and country, when the user hides their location.
             avatar_url:
               type: string
               nullable: true
@@ -7610,8 +8087,8 @@ components:
             investment_total:
               type: string
               nullable: true
-              description: Total amount invested in syndicate deals, in cents. String to avoid floating-point precision issues.
-              example: '500000'
+              description: '**Moderator-only.** Total invested in syndicate deals, in whole dollars, as a string.'
+              example: '5000'
             deal_count:
               type: integer
               nullable: true
@@ -7706,8 +8183,8 @@ components:
             amount_raised:
               type: string
               nullable: true
-              description: Amount in escrow in cents, as a string to avoid floating-point precision issues
-              example: '23000000'
+              description: Amount raised in whole dollars, as a string
+              example: '230000'
             investor_count:
               type: integer
               description: Count of distinct active investors
@@ -7715,7 +8192,7 @@ components:
             funding_target:
               type: string
               nullable: true
-              description: Target funding amount in cents, as a string
+              description: Target funding amount in **cents**, as a string (the one cents field on this object)
               example: '50000000'
             exemption:
               oneOf:
@@ -7730,13 +8207,13 @@ components:
             min_investment:
               type: string
               nullable: true
-              description: Minimum investment amount in cents, as a string
-              example: '10000'
+              description: Minimum investment in whole dollars, as a string
+              example: '100'
             max_investment:
               type: string
               nullable: true
-              description: Maximum investment amount in cents, as a string
-              example: '5000000'
+              description: Maximum investment in whole dollars, as a string
+              example: '50000'
             description:
               type: string
               nullable: true
@@ -7761,10 +8238,6 @@ components:
               nullable: true
               description: ISO 8601 timestamp when funding opened
               example: '2025-03-01T12:00:00Z'
-    SyndicateDealDetail:
-      description: Same as SyndicateDeal (show and index use the same serializer)
-      allOf:
-        - $ref: '#/components/schemas/SyndicateDeal'
     PortfolioCompanyRef:
       type: object
       description: The company behind a portfolio position or holding.
@@ -8123,8 +8596,8 @@ components:
               example: https://uploads.wefunder.com/uploads/user/avatar/456/large_photo.jpg
             amount:
               type: string
-              description: Investment amount in cents, as a string to avoid floating-point precision issues
-              example: '500000'
+              description: Total invested in this deal, in whole dollars, as a string
+              example: '5000'
             status:
               type: string
               enum:
@@ -8170,8 +8643,8 @@ components:
               example: Substack
             amount:
               type: string
-              description: Investment amount in cents, as a string to avoid floating-point precision issues
-              example: '500000'
+              description: Investment amount in whole dollars, as a string
+              example: '5000'
             status:
               type: string
               enum:
@@ -8220,9 +8693,8 @@ components:
             total_raised:
               type: string
               description: |
-                Total amount raised across directory-selected deals (one per company), in cents.
-                String to avoid floating-point precision issues.
-              example: '10780000'
+                Total amount raised across directory-selected deals (one per company), in whole dollars, as a string.
+              example: '107800'
             total_investors:
               type: integer
               description: Count of distinct investors across directory-selected deals (one per company)
