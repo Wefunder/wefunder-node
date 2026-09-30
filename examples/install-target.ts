@@ -2,39 +2,52 @@
 // `read:installations write:installations` (listing needs the read scope; write does not
 // imply it). Install, then mint the installation's own token — it has no expiry and no
 // refresh; revoking the install revokes it.
-import { Wefunder } from "../src/index.js";
+import { Wefunder, WefunderError } from "../src/index.js";
 
 export async function example(wf: Wefunder, syndicateId = "syn_abc123Example") {
   // #region guides/install-target
   // 1. Which companies / syndicates may this user install on? (Only those — an investor's
   //    empty list is not a failure.)
-  const targets = await wf.unwrap(wf.raw.listEligibleInstallTargets({ query: { target_type: "syndicate" } }));
-  for (const t of targets.data ?? []) console.log(t.id, t.name, t.installed ? "(already installed)" : "");
-
-  // 2. Install on one of them. The response carries the install (`data`) AND its token.
-  const installed = await wf.unwrap(
-    wf.raw.createInstallation({
-      body: { target_type: "syndicate", target_id: syndicateId, scopes: ["read:syndicates"] },
-    }),
+  const targets = await wf.unwrap(
+    wf.raw.listEligibleInstallTargets({ query: { target_type: "syndicate" } }),
   );
-  let installationToken = installed.token?.access_token;
+  for (const t of targets.data ?? [])
+    console.log(t.id, t.name, t.installed ? "(already installed)" : "");
 
-  // 3. Already installed (or the token wasn't kept)? Find the ACTIVE install on this target —
-  //    the list is newest-first and includes revoked rows and user installs, so match on
-  //    target + status, never on position — and mint a fresh token.
-  if (!installationToken) {
-    const installs = await wf.unwrap(wf.raw.listInstallations());
-    const install = (installs.data ?? []).find(
-      (i) => i.attributes?.status === "active" && i.attributes?.target?.id === syndicateId,
+  // 2. Install. The response carries the install (`data`) AND its token. If the app is
+  //    already installed here the API answers 409 `already_installed` — its `details.installation`
+  //    is the existing install's id, so mint a fresh token for that instead. Any other error
+  //    (revoked install, missing scope) still throws.
+  let installationToken: string | undefined;
+  try {
+    const installed = await wf.unwrap(
+      wf.raw.createInstallation({
+        body: {
+          target_type: "syndicate",
+          target_id: syndicateId,
+          scopes: ["read:syndicates"],
+        },
+      }),
     );
-    if (!install?.id) throw new Error(`not installed on ${syndicateId} yet`);
-    const minted = await wf.unwrap(wf.raw.createInstallationToken({ path: { external_id: install.id } }));
+    installationToken = installed.token?.access_token;
+  } catch (err) {
+    if (!(err instanceof WefunderError) || err.type !== "already_installed")
+      throw err;
+    const existingId = (err.details as { installation?: string } | undefined)
+      ?.installation;
+    if (!existingId) throw err;
+    const minted = await wf.unwrap(
+      wf.raw.createInstallationToken({ path: { external_id: existingId } }),
+    );
     installationToken = minted.token?.access_token; // shown once — store it
   }
+  if (!installationToken) throw new Error("no installation token returned");
 
-  // 4. First request AS the installation.
-  const asSyndicate = new Wefunder({ accessToken: installationToken! });
-  const deals = await asSyndicate.unwrap(asSyndicate.raw.listSyndicateDeals({ path: { syndicate_id: syndicateId } }));
+  // 3. First request AS the installation.
+  const asSyndicate = new Wefunder({ accessToken: installationToken });
+  const deals = await asSyndicate.unwrap(
+    asSyndicate.raw.listSyndicateDeals({ path: { syndicate_id: syndicateId } }),
+  );
   console.log(deals.data?.length, "deals");
   // #endregion
   return deals;
