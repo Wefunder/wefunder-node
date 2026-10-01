@@ -126,6 +126,9 @@ import type {
   ListCampaignsData,
   ListCampaignsErrors,
   ListCampaignsResponses,
+  ListCompanyInvestmentChangesData,
+  ListCompanyInvestmentChangesErrors,
+  ListCompanyInvestmentChangesResponses,
   ListCompanyQuestionsData,
   ListCompanyQuestionsErrors,
   ListCompanyQuestionsResponses,
@@ -813,6 +816,53 @@ export const getOfferingStats = <ThrowOnError extends boolean = false>(
   });
 
 /**
+ * Bootstrap or page investment changes for a company
+ *
+ * The Investment Delta API: keep a copy of a company's investment records in sync by
+ * polling. Call without `cursor` to **bootstrap** (list every current record for the
+ * company); every response carries `meta.next_cursor`; call again with that cursor to
+ * receive only the records whose published state changed since. Records are the same
+ * shape in both modes.
+ *
+ * - Records are **published state**, not live rows: Wefunder publishes a record when the
+ * investment's founder-visible state changes, and serves exactly what was published.
+ * - `visible: false` records are **tombstones**: the investment is no longer visible to the
+ * company (canceled, converted to another round, hidden, or deleted). Delete your copy.
+ * - Apply records in `cursor` order. `observed_at` is when the payload was observed, not a
+ * version; a record you read late carries the *current* published state.
+ * - **410 Gone** means your cursor predates the 90-day retention window. Bootstrap again and
+ * **replace** your dataset for the company from the result (records absent from the
+ * bootstrap are deleted).
+ * - Investor identity fields (`investor.name`, `investor.legal_name`, `investor.email`,
+ * `investor.address`, `investor.bio`, `message`, `external_username`) are **omitted**
+ * unless the token carries `read:investors:pii`.
+ * - Money is integer minor units plus `amounts.currency` (`committed_cents`,
+ * `investment_size_cents`, `in_escrow_cents`, `contracts[].override_amount_cents`).
+ * `shares` and `average_share_price` are decimal strings, `null` on rounds without shares.
+ * `amounts.raised_cents` is the row's contribution to the public raised figure (0 while
+ * `needs_whitelisting`); sum it, not `committed_cents`, to match the deal page.
+ *
+ */
+export const listCompanyInvestmentChanges = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<ListCompanyInvestmentChangesData, ThrowOnError>,
+): RequestResult<
+  ListCompanyInvestmentChangesResponses,
+  ListCompanyInvestmentChangesErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    ListCompanyInvestmentChangesResponses,
+    ListCompanyInvestmentChangesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/companies/{company_id}/investments/changes",
+    ...options,
+  });
+
+/**
  * Get portfolio summary
  *
  * Returns totals across the authenticated investor's portfolio: cost basis,
@@ -1028,7 +1078,7 @@ export const inviteSyndicateMember = <ThrowOnError extends boolean = false>(
  *
  * Removing a member is irreversible and requires human approval through the Intent system.
  * This endpoint always returns 422 with a `use_intents` error directing you to
- * `POST /v2/intents` with action `syndicates.remove_member`.
+ * `POST /intents` with action `syndicates.remove_member`.
  *
  */
 export const removeSyndicateMember = <ThrowOnError extends boolean = false>(
@@ -1253,7 +1303,10 @@ export const exportSyndicateMembersCsv = <ThrowOnError extends boolean = false>(
 /**
  * List deals
  *
- * Returns all deals (fundraises) within a syndicate with status, terms, and metrics.
+ * Returns the syndicate's **live** deals (open, oversubscribed, or closing) with status,
+ * terms, and metrics. Closed and upcoming rounds are not listed; `statistics.total_deals`
+ * counts all linked rounds.
+ *
  */
 export const listSyndicateDeals = <ThrowOnError extends boolean = false>(
   options: Options<ListSyndicateDealsData, ThrowOnError>,
@@ -1303,7 +1356,10 @@ export const getSyndicateDeal = <ThrowOnError extends boolean = false>(
  * The `user_email` field is **moderator-only** — it returns null for non-moderator
  * callers (i.e., users who are not a manager/operator of the syndicate).
  *
- * All monetary values are strings representing cents to avoid floating-point precision issues.
+ * `amount` is whole dollars as a string (e.g. `"5000"` is $5,000).
+ *
+ * Offset-paginated: pass `offset` and `per_page`; `meta` carries `total_count`,
+ * `offset`, `per_page`, and `has_more`. Without `per_page` the full list is returned.
  *
  */
 export const listSyndicateDealInvestors = <
@@ -1329,9 +1385,9 @@ export const listSyndicateDealInvestors = <
  * List member investments
  *
  * Returns this member's investments in syndicate deals. Scoped to the syndicate's
- * selected deals (one per company, matching directory semantics).
+ * selected deals (one per company, matching directory semantics). **Moderator-only.**
  *
- * All monetary values are strings representing cents to avoid floating-point precision issues.
+ * `amount` and `meta.total_amount` are whole dollars as strings.
  *
  */
 export const listSyndicateMemberInvestments = <
@@ -1362,7 +1418,7 @@ export const listSyndicateMemberInvestments = <
  * `total_raised` and `total_investors` are computed from directory-selected deals
  * (one per company). `total_deals` and `live_deals` use all linked deals.
  *
- * All monetary values are strings representing cents to avoid floating-point precision issues.
+ * `total_raised` is whole dollars as a string.
  *
  */
 export const getSyndicateStatistics = <ThrowOnError extends boolean = false>(
@@ -1578,6 +1634,9 @@ export const listIntents = <ThrowOnError extends boolean = false>(
  * An `idempotency_key` names one operation. Reusing it for the same operation returns the
  * existing intent (200) while that intent is pending, approved, executing, or executed;
  * reusing it for a different action, resource, or params is a 409 `idempotency_conflict`.
+ *
+ * An action still rolling out per account returns 403 `feature_disabled` for a user who is
+ * not yet enabled. `POST /intents/preview` runs the same checks without minting.
  *
  * See [Intents documentation](/concepts/intents) for the full pattern.
  *
