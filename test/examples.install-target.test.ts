@@ -71,6 +71,10 @@ describe("examples/install-target.ts", () => {
       "POST /installations/ins_existing/tokens Bearer at_live_USER",
       "GET /syndicates/syn_1/deals Bearer at_live_INSTALL", // the deals call runs AS the installation
     ]);
+    // The mint for the existing install asks for the SAME read-only scope as the install itself.
+    expect(JSON.parse(calls[2]!.body!)).toEqual({
+      scopes: ["read:syndicates"],
+    });
   });
 
   it("fresh install: uses the token from the create response, never lists or re-mints", async () => {

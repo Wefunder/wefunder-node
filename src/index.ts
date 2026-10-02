@@ -49,7 +49,7 @@ export {
   type RefreshOptions,
 } from "./oauth.js";
 
-export { type TokenStore, type TokenManagerOptions } from "./token-manager.js";
+export { WefunderTokenPersistenceError, type TokenStore, type TokenManagerOptions } from "./token-manager.js";
 
 export { paginate, collect, type Cursor, type Page, type PageFetcher } from "./pagination.js";
 
