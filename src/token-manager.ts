@@ -8,8 +8,31 @@
 // Either way, concurrent callers share one in-flight promise so a burst of 401s
 // fires a single recovery (no rotation race / thundering herd).
 
-import { refreshToken, resolveTokenBase, type TokenSet, type OAuthHostOptions } from "./oauth.js";
+import {
+  refreshToken,
+  resolveTokenBase,
+  type TokenSet,
+  type OAuthHostOptions,
+} from "./oauth.js";
 import { WefunderAuthError } from "./errors.js";
+
+/**
+ * The token store failed to save a rotated token set. `tokens` is the rotated set that is NOT
+ * yet durable and NOT yet in use: the manager keeps it pending and retries the save on the next
+ * call (or persist it yourself and call `markPersisted()`). Until it is saved no request uses it,
+ * and the consumed refresh token is never reused either.
+ */
+export class WefunderTokenPersistenceError extends Error {
+  readonly tokens: TokenSet;
+  constructor(tokens: TokenSet, cause: unknown) {
+    super(
+      `Token store failed to save the rotated token set: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
+    );
+    this.name = "WefunderTokenPersistenceError";
+    this.tokens = tokens;
+  }
+}
 
 /** Pluggable persistence for the rotating token set (DB row, secrets manager, etc.). */
 export interface TokenStore {
@@ -35,6 +58,10 @@ export interface TokenManagerOptions extends OAuthHostOptions {
   expiryLeewayMs?: number;
 }
 
+function sameTokenSet(a: TokenSet, b: TokenSet): boolean {
+  return a.accessToken === b.accessToken && a.refreshToken === b.refreshToken;
+}
+
 export class TokenManager {
   #tokens: TokenSet;
   readonly #clientId?: string;
@@ -47,6 +74,7 @@ export class TokenManager {
   readonly #now: () => number;
   readonly #leeway: number;
   #inflight: Promise<TokenSet> | undefined;
+  #pending: TokenSet | undefined;
 
   constructor(opts: TokenManagerOptions) {
     this.#tokens = opts.tokens;
@@ -61,19 +89,50 @@ export class TokenManager {
     this.#leeway = opts.expiryLeewayMs ?? 30_000;
   }
 
+  /** The durable, in-use token set. A rotated set that could not be persisted sits in `pendingTokens`. */
   get current(): TokenSet {
     return this.#tokens;
   }
 
   /** True if the manager can recover an expired token (rotate a refresh token or re-mint). */
   get canRefresh(): boolean {
-    return Boolean((this.#tokens.refreshToken && this.#clientId) || this.#reMint);
+    return Boolean(
+      (this.#tokens.refreshToken && this.#clientId) || this.#reMint,
+    );
   }
 
-  /** Returns a valid access token, refreshing proactively if it's expired/near-expiry. */
+  /** A rotated set awaiting a successful `store.save` (see `WefunderTokenPersistenceError`). */
+  get pendingTokens(): TokenSet | undefined {
+    return this.#pending;
+  }
+
+  /**
+   * Tell the manager you persisted `tokens` (the set from a `WefunderTokenPersistenceError`)
+   * yourself. Publishes it only if it is still the pending set — a stale acknowledgment (the
+   * manager has since rotated again) is a no-op and returns false, so an older save can never
+   * publish a newer, unsaved set.
+   */
+  async markPersisted(tokens: TokenSet): Promise<boolean> {
+    const pending = this.#pending;
+    if (!pending || !sameTokenSet(pending, tokens)) return false;
+    this.#pending = undefined;
+    this.#tokens = pending;
+    return true;
+  }
+
+  /**
+   * Returns a valid access token, refreshing proactively if it's expired/near-expiry. If a
+   * rotated set is pending persistence, the save is retried first — no request uses an
+   * undurable token.
+   */
   async getAccessToken(): Promise<string> {
+    if (this.#pending) await this.refresh();
     const { expiresAt } = this.#tokens;
-    if (expiresAt !== undefined && this.#now() >= expiresAt - this.#leeway && this.canRefresh) {
+    if (
+      expiresAt !== undefined &&
+      this.#now() >= expiresAt - this.#leeway &&
+      this.canRefresh
+    ) {
       await this.refresh();
     }
     return this.#tokens.accessToken;
@@ -86,6 +145,16 @@ export class TokenManager {
    */
   async refresh(): Promise<TokenSet> {
     if (this.#inflight) return this.#inflight;
+    // A rotated set awaiting persistence: retry the save rather than rotating again (the old
+    // refresh token was consumed by that rotation).
+    if (this.#pending) {
+      this.#inflight = this.#publishPending();
+      try {
+        return await this.#inflight;
+      } finally {
+        this.#inflight = undefined;
+      }
+    }
     const strategy = this.#recoveryStrategy();
     if (!strategy) {
       throw new WefunderAuthError(
@@ -93,17 +162,33 @@ export class TokenManager {
       );
     }
     this.#inflight = (async () => {
-      const next = await strategy();
-      this.#tokens = next;
-      await this.#store?.save(next);
-      await this.#onTokenRefresh?.(next);
-      return next;
+      this.#pending = await strategy();
+      return this.#publishPending();
     })();
     try {
       return await this.#inflight;
     } finally {
       this.#inflight = undefined;
     }
+  }
+
+  // Persist BEFORE publishing: no caller may use the rotated token until it is durable, and a
+  // failed save must not leave the process working in memory but unable to reconnect after a
+  // restart. On failure the set stays pending and WefunderTokenPersistenceError is thrown; the
+  // next call retries the save.
+  async #publishPending(): Promise<TokenSet> {
+    const tokens = this.#pending!;
+    try {
+      await this.#store?.save(tokens);
+      // `onTokenRefresh` is a persistence path too (the OAuth example persists there), so it
+      // runs BEFORE publication and a failure keeps the set pending exactly like a store failure.
+      await this.#onTokenRefresh?.(tokens);
+    } catch (err) {
+      throw new WefunderTokenPersistenceError(tokens, err);
+    }
+    this.#pending = undefined;
+    this.#tokens = tokens;
+    return tokens;
   }
 
   // Pick the recovery strategy: refresh_token rotation, else cc re-mint, else none.

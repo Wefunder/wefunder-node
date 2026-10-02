@@ -24,7 +24,11 @@ export {
   type WebhookEndpointRemoved,
 } from "./client.js";
 
-export { WefunderError, WefunderAuthError, REQUEST_ID_HEADER } from "./errors.js";
+export {
+  WefunderError,
+  WefunderAuthError,
+  REQUEST_ID_HEADER,
+} from "./errors.js";
 
 export {
   // PKCE + authorization_code
@@ -49,9 +53,20 @@ export {
   type RefreshOptions,
 } from "./oauth.js";
 
-export { type TokenStore, type TokenManagerOptions } from "./token-manager.js";
+export {
+  TokenManager,
+  WefunderTokenPersistenceError,
+  type TokenStore,
+  type TokenManagerOptions,
+} from "./token-manager.js";
 
-export { paginate, collect, type Cursor, type Page, type PageFetcher } from "./pagination.js";
+export {
+  paginate,
+  collect,
+  type Cursor,
+  type Page,
+  type PageFetcher,
+} from "./pagination.js";
 
 export {
   verifyWebhook,

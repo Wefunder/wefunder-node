@@ -37,7 +37,11 @@ export async function example(wf: Wefunder, syndicateId = "syn_abc123Example") {
       ?.installation;
     if (!existingId) throw err;
     const minted = await wf.unwrap(
-      wf.raw.createInstallationToken({ path: { external_id: existingId } }),
+      // same scopes as the create above — never widen on re-mint
+      wf.raw.createInstallationToken({
+        path: { external_id: existingId },
+        body: { scopes: ["read:syndicates"] },
+      }),
     );
     installationToken = minted.token?.access_token; // shown once — store it
   }
