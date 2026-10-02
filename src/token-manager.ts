@@ -58,6 +58,10 @@ export interface TokenManagerOptions extends OAuthHostOptions {
   expiryLeewayMs?: number;
 }
 
+function sameTokenSet(a: TokenSet, b: TokenSet): boolean {
+  return a.accessToken === b.accessToken && a.refreshToken === b.refreshToken;
+}
+
 export class TokenManager {
   #tokens: TokenSet;
   readonly #clientId?: string;
@@ -90,25 +94,30 @@ export class TokenManager {
     return this.#tokens;
   }
 
-  /** A rotated set awaiting a successful `store.save` (see `WefunderTokenPersistenceError`). */
-  get pendingTokens(): TokenSet | undefined {
-    return this.#pending;
-  }
-
-  /** Tell the manager you persisted `pendingTokens` yourself; publishes it. */
-  async markPersisted(): Promise<TokenSet> {
-    if (!this.#pending) return this.#tokens;
-    this.#tokens = this.#pending;
-    this.#pending = undefined;
-    await this.#onTokenRefresh?.(this.#tokens);
-    return this.#tokens;
-  }
-
   /** True if the manager can recover an expired token (rotate a refresh token or re-mint). */
   get canRefresh(): boolean {
     return Boolean(
       (this.#tokens.refreshToken && this.#clientId) || this.#reMint,
     );
+  }
+
+  /** A rotated set awaiting a successful `store.save` (see `WefunderTokenPersistenceError`). */
+  get pendingTokens(): TokenSet | undefined {
+    return this.#pending;
+  }
+
+  /**
+   * Tell the manager you persisted `tokens` (the set from a `WefunderTokenPersistenceError`)
+   * yourself. Publishes it only if it is still the pending set — a stale acknowledgment (the
+   * manager has since rotated again) is a no-op and returns false, so an older save can never
+   * publish a newer, unsaved set.
+   */
+  async markPersisted(tokens: TokenSet): Promise<boolean> {
+    const pending = this.#pending;
+    if (!pending || !sameTokenSet(pending, tokens)) return false;
+    this.#pending = undefined;
+    this.#tokens = pending;
+    return true;
   }
 
   /**
@@ -171,12 +180,14 @@ export class TokenManager {
     const tokens = this.#pending!;
     try {
       await this.#store?.save(tokens);
+      // `onTokenRefresh` is a persistence path too (the OAuth example persists there), so it
+      // runs BEFORE publication and a failure keeps the set pending exactly like a store failure.
+      await this.#onTokenRefresh?.(tokens);
     } catch (err) {
       throw new WefunderTokenPersistenceError(tokens, err);
     }
     this.#pending = undefined;
     this.#tokens = tokens;
-    await this.#onTokenRefresh?.(tokens);
     return tokens;
   }
 

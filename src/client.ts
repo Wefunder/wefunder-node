@@ -9,7 +9,12 @@ import { createClient, type Client } from "./generated/client/index.js";
 import { createFetch, type RetryOptions } from "./http.js";
 import { TokenManager, type TokenStore } from "./token-manager.js";
 import { WefunderError, requestIdFrom } from "./errors.js";
-import { clientCredentialsGrant, type TokenSet, type OAuthHostOptions } from "./oauth.js";
+import { WefunderTokenPersistenceError } from "./token-manager.js";
+import {
+  clientCredentialsGrant,
+  type TokenSet,
+  type OAuthHostOptions,
+} from "./oauth.js";
 import { paginate, collect, type Cursor, type Page } from "./pagination.js";
 import * as ops from "./generated/sdk.gen.js";
 import type {
@@ -39,13 +44,19 @@ import type { WebhookEventName } from "./webhooks.js";
 /** Body for `wf.webhookEndpoints.create()`. */
 export type CreateWebhookEndpointInput = CreateWebhookEndpointData["body"];
 /** Body for `wf.webhookEndpoints.update()` — `events` replaces the list wholesale. */
-export type UpdateWebhookEndpointInput = NonNullable<UpdateWebhookEndpointData["body"]>;
+export type UpdateWebhookEndpointInput = NonNullable<
+  UpdateWebhookEndpointData["body"]
+>;
 /** The list envelope, with `meta.quota` (max endpoints per app). */
 export type WebhookEndpointList = WebhookEndpointListEnvelope;
 /** Outcome of `wf.webhookEndpoints.test()`. */
-export type WebhookTestOutcome = NonNullable<WebhookEndpointTestResultEnvelope["data"]>;
+export type WebhookTestOutcome = NonNullable<
+  WebhookEndpointTestResultEnvelope["data"]
+>;
 /** Outcome of `wf.webhookEndpoints.remove()`. */
-export type WebhookEndpointRemoved = NonNullable<DeleteWebhookEndpointResponses[200]["data"]>;
+export type WebhookEndpointRemoved = NonNullable<
+  DeleteWebhookEndpointResponses[200]["data"]
+>;
 
 /** Documented `sort` values for the offerings list, from the generated op. */
 export type OfferingSort = NonNullable<ListOfferingsData["query"]>["sort"];
@@ -65,7 +76,9 @@ export type PortfolioFilters = NonNullable<GetPortfolioData["query"]>;
 /** Portfolio status values documented by the API. */
 export type PortfolioStatus = NonNullable<PortfolioFilters["status"]>;
 /** Filters and pagination controls for portfolio positions. */
-export type PortfolioPositionsQuery = NonNullable<ListPortfolioPositionsData["query"]>;
+export type PortfolioPositionsQuery = NonNullable<
+  ListPortfolioPositionsData["query"]
+>;
 /** Portfolio position filters, excluding the cursor managed by auto-pagination. */
 export type PortfolioPositionsFilters = Omit<PortfolioPositionsQuery, "cursor">;
 /** The summary resource inside the API's data envelope. */
@@ -129,7 +142,8 @@ export class Wefunder {
 
   constructor(opts: WefunderOptions) {
     const tokenSet: TokenSet | undefined =
-      opts.tokens ?? (opts.accessToken ? { accessToken: opts.accessToken } : undefined);
+      opts.tokens ??
+      (opts.accessToken ? { accessToken: opts.accessToken } : undefined);
     if (!tokenSet) {
       throw new Error("Wefunder: provide `accessToken` or `tokens`.");
     }
@@ -219,6 +233,16 @@ export class Wefunder {
   }
 
   /** The live token set (e.g. to persist after construction). */
+  /** A rotated set awaiting a successful save (see `WefunderTokenPersistenceError`). */
+  get pendingTokens(): TokenSet | undefined {
+    return this.#tokens.pendingTokens;
+  }
+
+  /** Acknowledge an out-of-band save of `tokens`; false if that set is no longer pending. */
+  markPersisted(tokens: TokenSet): Promise<boolean> {
+    return this.#tokens.markPersisted(tokens);
+  }
+
   get tokens(): TokenSet {
     return this.#tokens.current;
   }
@@ -226,13 +250,26 @@ export class Wefunder {
   // ---- unwrap: turn the {data,error,response} result into data-or-throw ----
   async #unwrap<T>(p: Result<T>): Promise<T> {
     const { data, error, response } = await p;
+    // Exceptions thrown by our own hooks (token recovery, persistence) are caught by the
+    // generated client into `error`; surface them as-is rather than rebuilding a generic error.
+    if (
+      error instanceof WefunderTokenPersistenceError ||
+      error instanceof WefunderError
+    )
+      throw error;
     if (response && response.ok && error === undefined) return data as T;
     const status = response?.status ?? 0;
     // The runtime error envelope nests request_id + remediation UNDER `error`
     // (api/v2/base_controller.rb#render_error), even though the spec's Error
     // schema models neither. Read them from there; fall back to top-level.
     const env = (error ?? {}) as {
-      error?: { type?: string; message?: string; details?: unknown; request_id?: string; remediation?: string };
+      error?: {
+        type?: string;
+        message?: string;
+        details?: unknown;
+        request_id?: string;
+        remediation?: string;
+      };
       request_id?: string;
     };
     throw new WefunderError({
@@ -240,7 +277,10 @@ export class Wefunder {
       type: env.error?.type ?? "api_error",
       message: env.error?.message ?? response?.statusText ?? "Request failed",
       // X-Wf-Request-Id header is primary (present even on non-JSON edge errors).
-      requestId: requestIdFrom(response, env.error?.request_id ?? env.request_id),
+      requestId: requestIdFrom(
+        response,
+        env.error?.request_id ?? env.request_id,
+      ),
       details: env.error?.details,
       remediation: env.error?.remediation,
     });
@@ -283,18 +323,24 @@ export class Wefunder {
   // ---- resource namespaces (common GA paths) ----
 
   users = {
-    me: () => this.#unwrapData<User>(ops.getCurrentUser({ client: this.#client })),
+    me: () =>
+      this.#unwrapData<User>(ops.getCurrentUser({ client: this.#client })),
   };
 
   offerings = {
-    list: this.#page<Offering, { cursor?: Cursor; sort?: OfferingSort }>(ops.listOfferings as never),
+    list: this.#page<Offering, { cursor?: Cursor; sort?: OfferingSort }>(
+      ops.listOfferings as never,
+    ),
     all: (query?: { sort?: OfferingSort }): AsyncGenerator<Offering> =>
       paginate((cursor) => this.offerings.list({ ...query, cursor })),
     collect: (query?: { sort?: OfferingSort }): Promise<Offering[]> =>
       collect((cursor) => this.offerings.list({ ...query, cursor })),
     get: (externalId: string) =>
       this.#unwrapData<Offering>(
-        ops.getOffering({ client: this.#client, path: { external_id: externalId } }),
+        ops.getOffering({
+          client: this.#client,
+          path: { external_id: externalId },
+        }),
       ),
   };
 
@@ -304,61 +350,103 @@ export class Wefunder {
    * from your last page — it is always present — and resume from it next time.
    */
   investments = {
-    list: this.#page<Investment, InvestmentsQuery>(ops.listInvestments as never),
+    list: this.#page<Investment, InvestmentsQuery>(
+      ops.listInvestments as never,
+    ),
     all: (query?: InvestmentsFilters): AsyncGenerator<Investment> =>
-      paginate((cursor) => this.investments.list({ ...query, cursor: cursor as string | undefined })),
+      paginate((cursor) =>
+        this.investments.list({
+          ...query,
+          cursor: cursor as string | undefined,
+        }),
+      ),
     collect: (query?: InvestmentsFilters): Promise<Investment[]> =>
-      collect((cursor) => this.investments.list({ ...query, cursor: cursor as string | undefined })),
+      collect((cursor) =>
+        this.investments.list({
+          ...query,
+          cursor: cursor as string | undefined,
+        }),
+      ),
     /** The current record (not the published projection) for one investment (`inv_…`). */
     get: (id: string) =>
-      this.#unwrapData<Investment>(ops.getInvestment({ client: this.#client, path: { id } })),
+      this.#unwrapData<Investment>(
+        ops.getInvestment({ client: this.#client, path: { id } }),
+      ),
   };
 
   portfolio = {
     get: (query?: PortfolioFilters) =>
-      this.#unwrapData<PortfolioSummary>(ops.getPortfolio({ client: this.#client, query })),
+      this.#unwrapData<PortfolioSummary>(
+        ops.getPortfolio({ client: this.#client, query }),
+      ),
     positions: {
       list: this.#page<PortfolioPosition, PortfolioPositionsQuery>(
         ops.listPortfolioPositions as never,
       ),
-      all: (query?: PortfolioPositionsFilters): AsyncGenerator<PortfolioPosition> =>
-        paginate((cursor) => this.portfolio.positions.list({ ...query, cursor: cursor as number })),
-      collect: (query?: PortfolioPositionsFilters): Promise<PortfolioPosition[]> =>
-        collect((cursor) => this.portfolio.positions.list({ ...query, cursor: cursor as number })),
+      all: (
+        query?: PortfolioPositionsFilters,
+      ): AsyncGenerator<PortfolioPosition> =>
+        paginate((cursor) =>
+          this.portfolio.positions.list({ ...query, cursor: cursor as number }),
+        ),
+      collect: (
+        query?: PortfolioPositionsFilters,
+      ): Promise<PortfolioPosition[]> =>
+        collect((cursor) =>
+          this.portfolio.positions.list({ ...query, cursor: cursor as number }),
+        ),
     },
   };
 
   campaigns = {
     list: this.#page<Campaign>(ops.listCampaigns as never),
-    all: (): AsyncGenerator<Campaign> => paginate((cursor) => this.campaigns.list({ cursor })),
-    collect: (): Promise<Campaign[]> => collect((cursor) => this.campaigns.list({ cursor })),
+    all: (): AsyncGenerator<Campaign> =>
+      paginate((cursor) => this.campaigns.list({ cursor })),
+    collect: (): Promise<Campaign[]> =>
+      collect((cursor) => this.campaigns.list({ cursor })),
   };
 
   syndicates = {
-    list: this.#page<Syndicate, { cursor?: Cursor; limit?: number }>(ops.listSyndicates as never),
+    list: this.#page<Syndicate, { cursor?: Cursor; limit?: number }>(
+      ops.listSyndicates as never,
+    ),
     all: (query?: { limit?: number }): AsyncGenerator<Syndicate> =>
       paginate((cursor) => this.syndicates.list({ ...query, cursor })),
     get: (id: number | string) =>
-      this.#unwrapData<Syndicate>(ops.getSyndicate({ client: this.#client, path: { id } as never })),
+      this.#unwrapData<Syndicate>(
+        ops.getSyndicate({ client: this.#client, path: { id } as never }),
+      ),
   };
 
   intents = {
     list: this.#page<
       Intent,
-      { cursor?: Cursor; status?: IntentStatus; resource_type?: string; resource_id?: number; limit?: number }
+      {
+        cursor?: Cursor;
+        status?: IntentStatus;
+        resource_type?: string;
+        resource_id?: number;
+        limit?: number;
+      }
     >(ops.listIntents as never),
     all: (query?: {
       status?: IntentStatus;
       resource_type?: string;
       resource_id?: number;
       limit?: number;
-    }): AsyncGenerator<Intent> => paginate((cursor) => this.intents.list({ ...query, cursor })),
+    }): AsyncGenerator<Intent> =>
+      paginate((cursor) => this.intents.list({ ...query, cursor })),
     get: (id: number | string) =>
-      this.#unwrapData<Intent>(ops.getIntent({ client: this.#client, path: { id } as never })),
+      this.#unwrapData<Intent>(
+        ops.getIntent({ client: this.#client, path: { id } as never }),
+      ),
   };
 
   attribution = {
-    me: () => this.#unwrapData<AttributionMe>(ops.getAttributionMe({ client: this.#client })),
+    me: () =>
+      this.#unwrapData<AttributionMe>(
+        ops.getAttributionMe({ client: this.#client }),
+      ),
   };
 
   /**
@@ -371,23 +459,37 @@ export class Wefunder {
   webhookEndpoints = {
     /** All of your app's endpoints (secret omitted). `meta.quota` is the per-app limit. */
     list: (): Promise<WebhookEndpointList> =>
-      this.#unwrap<WebhookEndpointList>(ops.listWebhookEndpoints({ client: this.#client })),
+      this.#unwrap<WebhookEndpointList>(
+        ops.listWebhookEndpoints({ client: this.#client }),
+      ),
     get: (id: string) =>
       this.#unwrapData<WebhookEndpoint>(
-        ops.getWebhookEndpoint({ client: this.#client, path: { external_id: id } }),
+        ops.getWebhookEndpoint({
+          client: this.#client,
+          path: { external_id: id },
+        }),
       ),
     /** Store `attributes.secret` from the result — it is never shown again. */
     create: (input: CreateWebhookEndpointInput) =>
-      this.#unwrapData<WebhookEndpoint>(ops.createWebhookEndpoint({ client: this.#client, body: input })),
+      this.#unwrapData<WebhookEndpoint>(
+        ops.createWebhookEndpoint({ client: this.#client, body: input }),
+      ),
     /** `events` replaces the subscription list wholesale (no merge); omit to leave unchanged. */
     update: (id: string, input: UpdateWebhookEndpointInput) =>
       this.#unwrapData<WebhookEndpoint>(
-        ops.updateWebhookEndpoint({ client: this.#client, path: { external_id: id }, body: input }),
+        ops.updateWebhookEndpoint({
+          client: this.#client,
+          path: { external_id: id },
+          body: input,
+        }),
       ),
     /** Stops deliveries immediately. Removal is permanent — create a new endpoint to resume. */
     remove: (id: string) =>
       this.#unwrapData<WebhookEndpointRemoved>(
-        ops.deleteWebhookEndpoint({ client: this.#client, path: { external_id: id } }),
+        ops.deleteWebhookEndpoint({
+          client: this.#client,
+          path: { external_id: id },
+        }),
       ),
     /**
      * New secret (shown once). The old one keeps signing for a 24h overlap — deliveries
@@ -395,12 +497,18 @@ export class Wefunder {
      */
     rotateSecret: (id: string) =>
       this.#unwrapData<WebhookEndpoint>(
-        ops.rotateWebhookEndpointSecret({ client: this.#client, path: { external_id: id } }),
+        ops.rotateWebhookEndpointSecret({
+          client: this.#client,
+          path: { external_id: id },
+        }),
       ),
     /** Recover an auto-disabled endpoint after fixing your server. Idempotent. */
     reenable: (id: string) =>
       this.#unwrapData<WebhookEndpoint>(
-        ops.reenableWebhookEndpoint({ client: this.#client, path: { external_id: id } }),
+        ops.reenableWebhookEndpoint({
+          client: this.#client,
+          path: { external_id: id },
+        }),
       ),
     /**
      * POST a real, signed example event at the endpoint (production envelope + signature)
