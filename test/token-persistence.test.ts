@@ -72,14 +72,11 @@ describe("TokenManager persistence gating", () => {
       fetch: oauth(),
       store: { save },
     });
-    await expect(tm.refresh()).rejects.toBeInstanceOf(
-      WefunderTokenPersistenceError,
+    const err = await tm.refresh().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(WefunderTokenPersistenceError);
+    expect((err as WefunderTokenPersistenceError).tokens.refreshToken).toBe(
+      "r2",
     );
-    await tm
-      .refresh()
-      .catch((e: WefunderTokenPersistenceError) =>
-        expect(e.tokens.refreshToken).toBe("r2"),
-      );
     expect(tm.current.accessToken).toBe("at_live_OLD"); // not published
     expect(tm.pendingTokens?.accessToken).toBe("at_live_NEW");
     // Next call retries the save (no second rotation) and publishes.
