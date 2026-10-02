@@ -22,6 +22,8 @@ export {
   type WebhookEndpointList,
   type WebhookTestOutcome,
   type WebhookEndpointRemoved,
+  type RequestMethod,
+  type RawRequestOptions,
 } from "./client.js";
 
 export {
