@@ -95,15 +95,17 @@ export interface InvestmentChangedEventData {
   observed_at: string;
   /**
    * `true` on the investment's first appearance in the stream: a NEW investment when `visible`
-   * is true. Absent on events recorded before 2026-09-30.
+   * is true. Events recorded before 2026-09-30 carry it as `null` (the server projects older
+   * snapshots with an explicit null) or omit it (deliveries stored before the hint existed), and
+   * the endpoint `/test` example omits both hints — treat either as unknown.
    */
-  first?: boolean;
+  first?: boolean | null;
   /**
    * Top-level record fields that differ from the last published copy (e.g. `["amounts", "group",
-   * "status"]`): enough for a notifier to decide post-or-ignore without fetching. Absent on events
-   * recorded before 2026-09-30.
+   * "status"]`): enough for a notifier to decide post-or-ignore without fetching. `null` or absent
+   * on events recorded before 2026-09-30, as for `first` — never call `.includes` on it unguarded.
    */
-  fields?: string[];
+  fields?: string[] | null;
 }
 
 /** `data` for the `offering.*` events. */
