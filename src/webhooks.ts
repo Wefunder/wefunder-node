@@ -83,10 +83,29 @@ export interface InvestmentChangedEventData {
   id: string;
   /** `false` means the investment is no longer visible to the company (a tombstone). */
   visible: boolean;
+  /**
+   * Why the record republished. Documented values: `"changed"`, `"recomputed"` (inputs unchanged;
+   * the record moved only because a derived value did — skip it in notifiers) and
+   * `"investor_deactivated"`. Kept open-ended so a new reason never fails a parse.
+   */
   reason: string;
   /** The company (`co_…`). */
   company: string | null;
+  /** ISO 8601 with microseconds. Order events by this, not by arrival. */
   observed_at: string;
+  /**
+   * `true` on the investment's first appearance in the stream: a NEW investment when `visible`
+   * is true. Events recorded before 2026-09-30 carry it as `null` (the server projects older
+   * snapshots with an explicit null) or omit it (deliveries stored before the hint existed), and
+   * the endpoint `/test` example omits both hints — treat either as unknown.
+   */
+  first?: boolean | null;
+  /**
+   * Top-level record fields that differ from the last published copy (e.g. `["amounts", "group",
+   * "status"]`): enough for a notifier to decide post-or-ignore without fetching. `null` or absent
+   * on events recorded before 2026-09-30, as for `first` — never call `.includes` on it unguarded.
+   */
+  fields?: string[] | null;
 }
 
 /** `data` for the `offering.*` events. */

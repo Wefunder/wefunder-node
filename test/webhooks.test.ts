@@ -179,6 +179,35 @@ describe("constructEvent (platform-events scheme)", () => {
     if (evt.event === "investment.executed") expect(evt.data.amounts.committed).toBe(50000);
   });
 
+  it("types investment.changed's sync hints (first, fields): populated, explicit null, and omitted", () => {
+    const envelopeFor = (data: Record<string, unknown>) =>
+      JSON.stringify({ id: "evt_chg", event: "investment.changed", created_at: "2026-09-30T12:00:00Z", mode: "test", data });
+    const base = { id: "inv_1", visible: true, reason: "changed", company: "co_1", observed_at: "2026-09-30T12:00:00.412110Z" };
+    const parse = (data: Record<string, unknown>) => {
+      const payload = envelopeFor(data);
+      const evt = constructEvent(payload, signWebhook({ payload, secret: SECRET, timestamp: ts }), SECRET, { now });
+      if (evt.event !== "investment.changed") throw new Error("expected investment.changed");
+      return evt.data;
+    };
+    // The docs' Slack rule, written against the declared type: a null/omitted hint is "unknown", not a crash.
+    const shouldPost = (d: { visible: boolean; first?: boolean | null; fields?: string[] | null }) =>
+      (d.first === true && d.visible) || (d.fields ?? []).some((f) => ["status", "group", "amounts"].includes(f));
+
+    const populated = parse({ ...base, first: true, fields: ["amounts", "group", "status"] });
+    expect(populated.fields).toEqual(["amounts", "group", "status"]);
+    expect(shouldPost(populated)).toBe(true);
+
+    const nulled = parse({ ...base, first: null, fields: null }); // older snapshot projected by the current server
+    expect(nulled.first).toBeNull();
+    expect(nulled.fields).toBeNull();
+    expect(shouldPost(nulled)).toBe(false);
+
+    const omitted = parse(base); // a delivery stored before the hints existed, or the endpoint /test example
+    expect(omitted.first).toBeUndefined();
+    expect(omitted.fields).toBeUndefined();
+    expect(shouldPost(omitted)).toBe(false);
+  });
+
   it("finds the header case-insensitively in a plain object and takes the first of an array", () => {
     expect(() => constructEvent(body, { "Wefunder-Signature": header }, SECRET, { now })).not.toThrow();
     expect(() => constructEvent(body, { "wefunder-signature": [header, "t=1,v1=x"] }, SECRET, { now })).not.toThrow();
