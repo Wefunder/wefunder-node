@@ -4,12 +4,12 @@
 
 The official TypeScript SDK for the [Wefunder API](https://docs.wefunder.com/api-reference).
 
-The SDK is currently in beta. Releases may include breaking changes until the API reaches `1.0`.
+The SDK follows semantic versioning from `1.0.0`: breaking changes only in a new major version, announced in the changelog.
 
 ## Install
 
 ```bash
-npm install @wefunder/sdk@beta
+npm install @wefunder/sdk
 ```
 
 Node 20 or newer is required. Both ESM and CommonJS are supported.
