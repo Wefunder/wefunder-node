@@ -4,12 +4,12 @@ import type { Wefunder } from "../src/index.js";
 
 export async function example(wf: Wefunder) {
   // #region createInstallation
-  const install = await wf.unwrap(
-    wf.raw.createInstallation({
-      body: { target_type: "company", target_id: "co_abc123Example", scopes: ["read:offerings", "read:investments"] },
-    }),
-  );
-  console.log(install.data?.id, install.data?.attributes);
+  const install = await wf.installations.create({
+    target_type: "company",
+    target_id: "co_abc123Example",
+    scopes: ["read:offerings", "read:investments"],
+  });
+  console.log(install.data?.id, install.token?.access_token); // the token is shown once — store it
   // #endregion
   return install;
 }

@@ -4,10 +4,10 @@ import type { Wefunder } from "../src/index.js";
 
 export async function example(wf: Wefunder) {
   // #region createInstallationToken
-  const token = await wf.unwrap(
-    wf.raw.createInstallationToken({ path: { external_id: "ins_9t2xExample" }, body: { scopes: ["read:investments"] } }),
-  );
-  console.log(token.data);
+  const minted = await wf.installations.mintToken("ins_9t2xExample", [
+    "read:investments",
+  ]);
+  console.log(minted.token?.access_token); // shown once — store it
   // #endregion
-  return token;
+  return minted;
 }

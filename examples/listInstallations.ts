@@ -4,8 +4,9 @@ import type { Wefunder } from "../src/index.js";
 
 export async function example(wf: Wefunder) {
   // #region listInstallations
-  const installs = await wf.unwrap(wf.raw.listInstallations());
-  for (const install of installs.data ?? []) console.log(install.id, install.attributes);
+  const installs = await wf.installations.list();
+  for (const install of installs.data ?? [])
+    console.log(install.id, install.attributes);
   // #endregion
   return installs;
 }
