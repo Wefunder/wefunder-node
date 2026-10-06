@@ -120,7 +120,9 @@ const investments = await wf.investments.list({ company_id: "co_example" });
 const portfolio = await wf.portfolio.get();
 ```
 
-Namespaces: `users`, `offerings`, `investments`, `portfolio`, `campaigns`, `syndicates`, `intents`, `attribution`, and `webhookEndpoints`.
+Namespaces: `users`, `offerings`, `investments`, `portfolio`, `campaigns`, `syndicates`, `intents`, `attribution`, `installations`, and `webhookEndpoints`.
+
+`wf.offerings.stats(id)` returns an offering's aggregate investment stats. `wf.installations` lets your app act as a company or syndicate: `eligibleTargets()`, `create()`, `mintToken()`, `list()`, `get()`, `revoke()`, and `installOrMintToken()`, which handles the API's 409 `already_installed` answer by minting a token for the existing install with the same scopes.
 
 `wf.investments` is the Investment Delta API. `list()` without a cursor bootstraps; pass `updated_since` or the `meta.next_cursor` you saved from your last page to receive only records that changed since then. `next_cursor` is always present, even on the final page, so persist it after every sync.
 

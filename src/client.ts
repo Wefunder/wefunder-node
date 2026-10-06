@@ -32,6 +32,12 @@ import type {
   ListInvestmentsData,
   GetPortfolioData,
   ListPortfolioPositionsData,
+  OfferingStatsEnvelope,
+  Installation,
+  InstallationListEnvelope,
+  InstallationTokenEnvelope,
+  EligibleTargetListEnvelope,
+  CreateInstallationData,
   WebhookEndpoint,
   WebhookEndpointListEnvelope,
   WebhookEndpointTestResultEnvelope,
@@ -58,6 +64,21 @@ export type WebhookEndpointRemoved = NonNullable<
   DeleteWebhookEndpointResponses[200]["data"]
 >;
 
+/** Aggregate stats for one offering, from `wf.offerings.stats()`. */
+export type OfferingStats = NonNullable<OfferingStatsEnvelope["data"]>;
+/** Body for `wf.installations.create()`. */
+export type CreateInstallationInput = CreateInstallationData["body"];
+/** `wf.installations.list()` envelope (`meta.count`). */
+export type InstallationList = InstallationListEnvelope;
+/**
+ * Result of `wf.installations.create()` / `mintToken()`: the install (`data`) plus the
+ * company-owned token (`token`), which is shown once.
+ */
+export type InstallationWithToken = InstallationTokenEnvelope;
+/** One row of `wf.installations.eligibleTargets()`. */
+export type EligibleInstallTarget = NonNullable<
+  EligibleTargetListEnvelope["data"]
+>[number];
 /** Documented `sort` values for the offerings list, from the generated op. */
 export type OfferingSort = NonNullable<ListOfferingsData["query"]>["sort"];
 /**
@@ -390,6 +411,14 @@ export class Wefunder {
           path: { external_id: externalId },
         }),
       ),
+    /** Aggregate investment stats (count / committed / raised, by status) for one offering. */
+    stats: (externalId: string) =>
+      this.#unwrapData<OfferingStats>(
+        ops.getOfferingStats({
+          client: this.#client,
+          path: { offering_id: externalId },
+        }),
+      ),
   };
 
   /**
@@ -494,6 +523,85 @@ export class Wefunder {
     me: () =>
       this.#unwrapData<AttributionMe>(
         ops.getAttributionMe({ client: this.#client }),
+      ),
+  };
+
+  /**
+   * Installations (`/installations`, scopes `read:installations` / `write:installations`;
+   * write does not imply read). An install lets your app act AS a company or syndicate:
+   * `create` and `mintToken` return a company-owned token (shown once, no expiry, no
+   * refresh) — build a second client with it. Installing is also what makes a company
+   * or syndicate an audience for your webhooks.
+   */
+  installations = {
+    /** Companies / syndicates the token's user may install your app on (empty for an investor). */
+    eligibleTargets: (query?: {
+      target_type?: "company" | "syndicate";
+    }): Promise<EligibleInstallTarget[]> =>
+      this.#unwrapData<EligibleInstallTarget[]>(
+        ops.listEligibleInstallTargets({ client: this.#client, query }),
+      ).then((rows) => rows ?? []),
+    /** Every install of your app (`meta.count`). */
+    list: (): Promise<InstallationList> =>
+      this.#unwrap<InstallationList>(
+        ops.listInstallations({ client: this.#client }),
+      ),
+    get: (id: string) =>
+      this.#unwrapData<Installation>(
+        ops.getInstallation({
+          client: this.#client,
+          path: { external_id: id },
+        }),
+      ),
+    /**
+     * Install on a target. Store `token.access_token` — it is never shown again. If the
+     * app is already installed there the API answers 409 `already_installed` with
+     * `details.installation` = the existing id; mint a token for that instead
+     * (see `installOrMintToken`).
+     */
+    create: (input: CreateInstallationInput) =>
+      this.#unwrap<InstallationWithToken>(
+        ops.createInstallation({ client: this.#client, body: input }),
+      ),
+    /**
+     * A fresh company-owned token for an existing install. `scopes` narrows within the
+     * install's ceiling; omit it for the ceiling, and note an explicit `[]` grants nothing.
+     */
+    mintToken: (id: string, scopes?: string[]) =>
+      this.#unwrap<InstallationWithToken>(
+        ops.createInstallationToken({
+          client: this.#client,
+          path: { external_id: id },
+          body: scopes ? { scopes } : undefined,
+        }),
+      ),
+    /**
+     * `create`, falling back to `mintToken` for the existing install on 409
+     * `already_installed`. The mint re-requests `input.scopes` so a retry never widens the
+     * grant. Any other error (revoked install, missing scope) still throws.
+     */
+    installOrMintToken: async (
+      input: CreateInstallationInput,
+    ): Promise<InstallationWithToken> => {
+      try {
+        return await this.installations.create(input);
+      } catch (err) {
+        if (!(err instanceof WefunderError) || err.type !== "already_installed")
+          throw err;
+        const existingId = (
+          err.details as { installation?: string } | undefined
+        )?.installation;
+        if (!existingId) throw err;
+        return this.installations.mintToken(existingId, input.scopes);
+      }
+    },
+    /** Revoke an install: its tokens stop working at once. Returns the install, now `revoked`. */
+    revoke: (id: string) =>
+      this.#unwrapData<Installation>(
+        ops.revokeInstallation({
+          client: this.#client,
+          path: { external_id: id },
+        }),
       ),
   };
 

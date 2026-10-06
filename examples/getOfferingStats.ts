@@ -3,10 +3,8 @@ import type { Wefunder } from "../src/index.js";
 
 export async function example(wf: Wefunder) {
   // #region getOfferingStats
-  const { data: stats } = await wf.unwrap(
-    wf.raw.getOfferingStats({ path: { offering_id: "ofr_QfmTyP8qjfYAvkEgREyL3kLf" } }),
-  );
-  console.log(stats);
+  const stats = await wf.offerings.stats("ofr_QfmTyP8qjfYAvkEgREyL3kLf");
+  console.log(stats.total?.count, stats.total?.raised_cents, stats.by_status);
   // #endregion
   return stats;
 }
