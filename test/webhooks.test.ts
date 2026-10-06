@@ -179,6 +179,30 @@ describe("constructEvent (platform-events scheme)", () => {
     if (evt.event === "investment.executed") expect(evt.data.amounts.committed).toBe(50000);
   });
 
+  it("types investment.changed's sync hints (first, fields) so a docs-following notifier compiles", () => {
+    const changed = JSON.stringify({
+      id: "evt_chg",
+      event: "investment.changed",
+      created_at: "2026-09-30T12:00:00Z",
+      mode: "test",
+      data: {
+        id: "inv_1",
+        visible: true,
+        reason: "changed",
+        company: "co_1",
+        observed_at: "2026-09-30T12:00:00.412110Z",
+        first: true,
+        fields: ["amounts", "group", "status"],
+      },
+    });
+    const evt = constructEvent(changed, signWebhook({ payload: changed, secret: SECRET, timestamp: ts }), SECRET, { now });
+    if (evt.event !== "investment.changed") throw new Error("expected investment.changed");
+    // The docs' Slack rule: post when first && visible, or when fields touches status/group/amounts.
+    const post = (evt.data.first && evt.data.visible) || evt.data.fields?.some((f) => ["status", "group", "amounts"].includes(f));
+    expect(post).toBe(true);
+    expect(evt.data.fields).toEqual(["amounts", "group", "status"]);
+  });
+
   it("finds the header case-insensitively in a plain object and takes the first of an array", () => {
     expect(() => constructEvent(body, { "Wefunder-Signature": header }, SECRET, { now })).not.toThrow();
     expect(() => constructEvent(body, { "wefunder-signature": [header, "t=1,v1=x"] }, SECRET, { now })).not.toThrow();
