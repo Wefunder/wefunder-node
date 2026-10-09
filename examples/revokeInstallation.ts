@@ -4,7 +4,7 @@ import type { Wefunder } from "../src/index.js";
 
 export async function example(wf: Wefunder) {
   // #region revokeInstallation
-  const revoked = await wf.installations.revoke("ins_9t2xExample");
+  const revoked = await wf.installations.revoke("inst_7hQExampleInstall01");
   console.log(revoked.attributes?.status); // "revoked"
   // #endregion
   return revoked;

@@ -90,6 +90,14 @@ export type Investment = InvestmentDeltaRecord;
 /** Filters + sync controls for `GET /investments` (`cursor` is managed by auto-pagination). */
 export type InvestmentsQuery = NonNullable<ListInvestmentsData["query"]>;
 export type InvestmentsFilters = Omit<InvestmentsQuery, "cursor">;
+/** Query for `syndicates.list`. The API accepts only `cursor` and `per_page`. */
+export type SyndicatesQuery = {
+  cursor?: Cursor;
+  /** Page size (API default 25, max 100). */
+  per_page?: number;
+  /** @deprecated Not a `listSyndicates` parameter; the API ignores it. Use `per_page`. */
+  limit?: number;
+};
 /** Documented `status` filter values for the intents list, from the generated op. */
 export type IntentStatus = NonNullable<ListIntentsData["query"]>["status"];
 /** Portfolio summary filters shared with the positions endpoint. */
@@ -484,12 +492,11 @@ export class Wefunder {
   };
 
   syndicates = {
-    list: this.#page<Syndicate, { cursor?: Cursor; limit?: number }>(
-      ops.listSyndicates as never,
-    ),
-    all: (query?: { limit?: number }): AsyncGenerator<Syndicate> =>
+    list: this.#page<Syndicate, SyndicatesQuery>(ops.listSyndicates as never),
+    all: (query?: Omit<SyndicatesQuery, "cursor">): AsyncGenerator<Syndicate> =>
       paginate((cursor) => this.syndicates.list({ ...query, cursor })),
-    get: (id: number | string) =>
+    /** One syndicate by its external id (`syn_…`). */
+    get: (id: string) =>
       this.#unwrapData<Syndicate>(
         ops.getSyndicate({ client: this.#client, path: { id } as never }),
       ),
