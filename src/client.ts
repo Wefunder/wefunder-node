@@ -491,7 +491,10 @@ export class Wefunder {
       paginate((cursor) => this.syndicates.list({ ...query, cursor })),
     get: (id: number | string) =>
       this.#unwrapData<Syndicate>(
-        ops.getSyndicate({ client: this.#client, path: { id } as never }),
+        ops.getSyndicate({
+          client: this.#client,
+          path: { syndicate_id: String(id) },
+        }),
       ),
   };
 
@@ -515,7 +518,10 @@ export class Wefunder {
       paginate((cursor) => this.intents.list({ ...query, cursor })),
     get: (id: number | string) =>
       this.#unwrapData<Intent>(
-        ops.getIntent({ client: this.#client, path: { id } as never }),
+        ops.getIntent({
+          client: this.#client,
+          path: { intent_id: String(id) },
+        }),
       ),
   };
 
