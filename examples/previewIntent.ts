@@ -9,7 +9,7 @@ export async function example(wf: Wefunder) {
       body: {
         action_name: "syndicates.close_deal",
         resource_type: "Club",
-        resource_id: "syn_example",
+        resource_id: "syn_aB3xQ9k2vF8mNp1zT5wY7Qc4",
         params: { fundraise_id: 99 },
       },
     }),
