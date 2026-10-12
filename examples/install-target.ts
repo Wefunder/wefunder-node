@@ -4,7 +4,7 @@
 // refresh; revoking the install revokes it.
 import { Wefunder } from "../src/index.js";
 
-export async function example(wf: Wefunder, syndicateId = "syn_abc123Example") {
+export async function example(wf: Wefunder, syndicateId = "syn_aB3xQ9k2vF8mNp1zT5wY7Qc4") {
   // #region guides/install-target
   // 1. Which companies / syndicates may this user install on? (Only those — an investor's
   //    empty list is not a failure.)

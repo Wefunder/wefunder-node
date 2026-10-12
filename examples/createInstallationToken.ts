@@ -4,7 +4,7 @@ import type { Wefunder } from "../src/index.js";
 
 export async function example(wf: Wefunder) {
   // #region createInstallationToken
-  const minted = await wf.installations.mintToken("ins_9t2xExample", [
+  const minted = await wf.installations.mintToken("inst_7hQExampleInstall01", [
     "read:investments",
   ]);
   console.log(minted.token?.access_token); // shown once — store it

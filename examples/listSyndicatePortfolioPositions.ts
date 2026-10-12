@@ -6,7 +6,7 @@ export async function example(wf: Wefunder) {
   // #region listSyndicatePortfolioPositions
   const page = await wf.unwrap(
     wf.raw.listSyndicatePortfolioPositions({
-      path: { syndicate_id: "syn_example" },
+      path: { syndicate_id: "syn_aB3xQ9k2vF8mNp1zT5wY7Qc4" },
       query: { status: "active", per_page: 25 },
     }),
   );

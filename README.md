@@ -158,7 +158,7 @@ API failures throw `WefunderError`:
 import { WefunderError } from "@wefunder/sdk";
 
 try {
-  await wf.syndicates.get("syn_example");
+  await wf.syndicates.get("syn_aB3xQ9k2vF8mNp1zT5wY7Qc4");
 } catch (error) {
   if (error instanceof WefunderError) {
     console.error(error.status, error.type, error.message, error.requestId);
@@ -259,7 +259,7 @@ Typed namespaces cover the most common resources. Every operation in the public 
 ```ts
 const members = await wf.unwrap(
   wf.raw.listSyndicateMembers({
-    path: { syndicate_id: "syn_example" },
+    path: { syndicate_id: "syn_aB3xQ9k2vF8mNp1zT5wY7Qc4" },
   }),
 );
 ```
