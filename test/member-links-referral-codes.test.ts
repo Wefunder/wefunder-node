@@ -80,12 +80,12 @@ describe("referralCodes namespace", () => {
     expect(counts!.weeks).toHaveLength(1);
     expect(rows!.weeks).toBeUndefined();
     expect(rows!.investments).toHaveLength(1);
-    await expect(statsExample(wf)).resolves.toBeDefined(); // the published example handles both
     expect(calls.map((c) => `${c.method} ${new URL(c.url).pathname}`)).toEqual([
       "GET /referral_codes", "POST /referral_codes", "GET /referral_codes/ref_1", "PATCH /referral_codes/ref_1", "GET /referral_codes/ref_1/stats",
     ]);
     expect(JSON.parse(calls[1]!.body!)).toEqual({ label: "October", company_id: "co_1", utm: { source: "newsletter" } });
     expect(JSON.parse(calls[3]!.body!)).toEqual({ active: false });
     expect(new URL(calls[4]!.url).searchParams.get("company_id")).toBe("co_1");
+    await expect(statsExample(wf)).resolves.toBeDefined(); // the published example handles both shapes
   });
 });
