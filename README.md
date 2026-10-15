@@ -180,7 +180,7 @@ try {
 }
 ```
 
-Retries are bounded (`retry.maxRetries`, default 2) and differ by failure: a `429` is retried for any method after waiting out `X-RateLimit-Reset`; transient network errors and `5xx` responses are retried only for idempotent methods (`GET`, `HEAD`, `OPTIONS`); a `401` is recovered once, for any method, by refreshing or re-minting the token and resending. Size request timeouts with the rate-limit wait in mind, since a rate-limited write can be attempted up to three times. `error.remediation` carries the API's suggested fix when it sends one.
+Retries are bounded (`retry.maxRetries`, default 2) and differ by failure: a `429` is retried for any method after waiting out `X-RateLimit-Reset`; transient network errors and `5xx` responses are retried only for idempotent methods (`GET`, `HEAD`, `OPTIONS`); a `401` is recovered once, for any method, by refreshing or re-minting the token and resending. Size request timeouts with the rate-limit wait in mind, since rate limiting alone can attempt a write up to three times, and the one-time 401 recovery can add one more. `error.remediation` carries the API's suggested fix when it sends one.
 
 ## Webhooks
 
