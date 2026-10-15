@@ -1,6 +1,6 @@
 {
   "name": "@wefunder/sdk",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Official TypeScript SDK for the Wefunder API (beta)",
   "license": "MIT",
   "type": "module",

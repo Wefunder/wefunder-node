@@ -8,12 +8,12 @@ export async function example(wf: Wefunder) {
   const { data: intent } = await wf.unwrap(
     wf.raw.createIntent({
       body: {
-        action_name: "syndicates.close_deal",
+        action_name: "syndicates.remove_member",
         resource_type: "Club",
         resource_id: "syn_aB3xQ9k2vF8mNp1zT5wY7Qc4",
-        params: { fundraise_id: 99 },
+        params: { member_id: "mem_7Hk2mP9qR4sT1uV6wX8yZ3aB" },
         // Safe to retry: an existing pending/executed intent with this key is returned instead.
-        idempotency_key: "close-acme-series-a",
+        idempotency_key: "remove-mem_7Hk2mP9qR4sT1uV6wX8yZ3aB-2026-10",
         requested_by_agent: "My Deal Bot",
       },
     }),

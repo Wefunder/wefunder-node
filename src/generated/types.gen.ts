@@ -82,11 +82,182 @@ export type EligibleTargetListEnvelope = {
   };
 };
 
+/**
+ * Optional UTM presets. On a visit that carries this code, each preset fills the matching
+ * `utm_*` field when the link leaves it blank; a value on the link always wins. Each value is
+ * at most 100 printable ASCII characters. `source` and `campaign` may not start with `wf_`.
+ *
+ */
+export type ReferralCodeUtm = {
+  source?: string;
+  medium?: string;
+  campaign?: string;
+  content?: string;
+  term?: string;
+};
+
+export type ReferralCode = {
+  id?: string;
+  type?: string;
+  attributes?: {
+    label?: string;
+    /**
+     * A paused code is ignored on arrival; it still credits cookies set while it was active.
+     */
+    active?: boolean;
+    /**
+     * The company or offering this code credits, or null for any company. If the target
+     * no longer exists, `id` is null and `unavailable` is true: the code credits nothing.
+     *
+     */
+    target?: {
+      type?: "company" | "offering";
+      id?: string | null;
+      /**
+       * Present and true when the target no longer exists.
+       */
+      unavailable?: boolean;
+    } | null;
+    utm?: ReferralCodeUtm;
+    metadata?: {
+      [key: string]: unknown;
+    };
+    /**
+     * The query parameter to append to any wefunder.com link.
+     */
+    link_parameter?: string;
+    /**
+     * On list and retrieve only: the daily visit snapshot. Investor ranges are per
+     * company and per week, on `GET /referral_codes/{id}/stats`.
+     *
+     */
+    stats?: ReferralCodeVisits;
+    created_at?: string;
+    updated_at?: string;
+  };
+};
+
+export type ReferralCodeVisits = {
+  visits?: number;
+  unique_visitors?: number;
+  /**
+   * The last full UTC day the visit numbers include.
+   */
+  visits_as_of?: string;
+};
+
+export type ReferralCohort = {
+  /**
+   * ISO week, Monday to Sunday UTC.
+   */
+  week?: string;
+  /**
+   * Unique investors referred that week, as a range. Never exact.
+   */
+  investors?: {
+    min?: number;
+    max?: number;
+  };
+  policy_version?: number;
+  published_at?: string;
+};
+
+export type ReferralCodeStatsCompany = {
+  company?: string;
+  /**
+   * What your app may see for this company, from its installation on it.
+   */
+  level?: "counts" | "anonymized" | "full";
+  /**
+   * Where the company's founders verify referrals in their own dashboard.
+   */
+  verification_url?: string;
+  /**
+   * Counts level only. The first week this company has cells for.
+   */
+  in_scope_since?: string;
+  /**
+   * Counts level only. Every completed week since in_scope_since.
+   */
+  weeks?: Array<ReferralCohort>;
+  /**
+   * Anonymized or full level only, replacing `weeks`. Anonymized rows carry opaque
+   * `investment` and `investor` tokens, `week`, `amount_tier`, `status` and
+   * `time_to_invest`; full rows carry the investment id, the investor's name and email,
+   * the exact `amount`, `status`, `clicked_at`, `applied_at` and the UTM attribution.
+   *
+   */
+  investments?: Array<{
+    [key: string]: unknown;
+  }>;
+  /**
+   * Present when the company has more rows; pass it as `investments_cursor` with `company_id`.
+   */
+  investments_next_cursor?: number;
+};
+
+export type ReferralCodeStatsEnvelope = {
+  data?: {
+    id?: string;
+    type?: string;
+    attributes?: ReferralCodeVisits & {
+      label?: string;
+      companies?: Array<ReferralCodeStatsCompany>;
+    };
+  };
+  meta?: {
+    has_more?: boolean;
+    page_count?: number;
+    /**
+     * Present when has_more is true.
+     */
+    next_cursor?: number;
+    request_id?: string;
+  };
+};
+
+export type ReferralCodeEnvelope = {
+  data?: ReferralCode;
+  meta?: {
+    request_id?: string;
+  };
+};
+
+export type ReferralCodeListEnvelope = {
+  data?: Array<ReferralCode>;
+  meta?: {
+    has_more?: boolean;
+    page_count?: number;
+    /**
+     * Present when has_more is true.
+     */
+    next_cursor?: number;
+    /**
+     * Maximum active codes allowed for this application.
+     */
+    active_limit?: number;
+    request_id?: string;
+  };
+};
+
 export type WebhookEndpoint = {
   id?: string;
   type?: string;
   attributes?: {
+    /**
+     * The full URL. App-wide endpoints always carry it; an installation-bound endpoint carries
+     * it only in the create response that made it, and `url_hint` everywhere else.
+     *
+     */
     url?: string;
+    /**
+     * Host plus the last six characters of a bound endpoint's URL, for recognition only.
+     */
+    url_hint?: string;
+    /**
+     * The installation this endpoint is bound to (`inst_…`), or null for an app-wide endpoint.
+     */
+    installation?: string | null;
     mode?: "live" | "test";
     events?: Array<string>;
     enabled?: boolean;
@@ -168,10 +339,12 @@ export type InvestmentChangeListEnvelope = {
 };
 
 /**
- * The record of one investment, or a tombstone (`visible: false`, only `id`). `visible` is
- * founder visibility: a user's own canceled investment is a full record with `visible: false`
- * and `status: canceled`. Investor PII keys are omitted without `read:investors:pii`, except on
- * the user's own records.
+ * The record of one investment, or a tombstone. A tombstone is `visible: false` with `id` and
+ * the sync metadata (`observed_at`, `cursor`, `reason`) and no payload fields: no `status`,
+ * `amounts`, `investor`. `visible` is founder visibility: a user's own canceled investment is a
+ * full record with `visible: false` and `status: canceled`, so tell the two apart by the
+ * presence of `status`, not by `visible`. Investor PII keys are omitted without
+ * `read:investors:pii`, except on the user's own records.
  *
  */
 export type InvestmentDeltaRecord = {
@@ -282,75 +455,18 @@ export type InvestmentDeltaRecord = {
    */
   cursor?: string | null;
   /**
-   * Why the ledger row exists. `investor_deactivated` marks the first republish after the investor's
-   * account was deactivated (identity fields redacted). Delta pages only.
+   * Why the ledger row exists. Delta pages only; `null` on list pages and on retrieve. Every
+   * value is a record to upsert. `changed`: a partner-visible field moved. `recomputed`: the
+   * investment's inputs did not change and the record moved only because Wefunder changed how
+   * it derives a field; sync it, but a notification rule may skip it. `reprojected`: the
+   * retired name for `recomputed`, still served on rows published before the rename for as
+   * long as they are retained (90 days); treat it exactly like `recomputed`.
+   * `investor_deactivated` marks the first republish after the investor's account was
+   * deactivated (identity fields redacted).
    *
    */
-  reason?: "changed" | "reprojected" | "investor_deactivated";
-};
-
-export type AttributedInvestmentListEnvelope = {
-  /**
-   * Returns AnonymizedAttribution or FullAttribution objects
-   * depending on detail_level and user permissions.
-   *
-   */
-  data?: Array<AnonymizedAttribution | FullAttribution>;
-  meta?: PaginationMeta & {
-    /**
-     * The detail level returned in this response
-     */
-    detail_level?: "anonymized" | "full";
-    /**
-     * Whether the user can request full details
-     */
-    can_view_full?: boolean;
-  };
-};
-
-export type AttributionCampaignSummary = {
-  id?: number;
-  company_name?: string;
-  company_id?: number;
-  state?: string;
-  /**
-   * 1=anonymized, 2=detailed (future)
-   */
-  access_level?: number;
-};
-
-export type AttributionCampaignSummaryListEnvelope = {
-  data?: Array<AttributionCampaignSummary>;
-};
-
-export type AttributionUser = {
-  id?: number;
-  email?: string;
-  name?: string;
-};
-
-export type AttributionPartner = {
-  id?: number;
-  company_name?: string;
-  website?: string;
-  status?: "pending" | "approved" | "rejected";
-} | null;
-
-export type AttributionCampaignAccess = {
-  id?: number;
-  company_name?: string;
-  company_id?: number;
-  access_level?: number;
-};
-
-export type AttributionMe = {
-  user?: AttributionUser;
-  partner?: AttributionPartner;
-  campaigns?: Array<AttributionCampaignAccess>;
-};
-
-export type AttributionMeEnvelope = {
-  data?: AttributionMe;
+  reason?:
+    "changed" | "recomputed" | "reprojected" | "investor_deactivated" | null;
 };
 
 export type ConnectedAppRevocation = {
@@ -360,21 +476,6 @@ export type ConnectedAppRevocation = {
 
 export type ConnectedAppRevocationEnvelope = {
   data?: ConnectedAppRevocation;
-};
-
-export type WebhookTestResult = {
-  message?: string;
-  delivery_id?: string;
-  /**
-   * The payload that was sent
-   */
-  payload_preview?: {
-    [key: string]: unknown;
-  };
-};
-
-export type WebhookTestResultEnvelope = {
-  data?: WebhookTestResult;
 };
 
 export type ConnectedAppListEnvelope = {
@@ -420,14 +521,22 @@ export type OfferingListEnvelope = {
      */
     total_count?: number;
     /**
-     * Number of offerings on this page (at most 25).
+     * Number of offerings on this page (at most `per_page`).
      */
     page_count?: number;
     has_more?: boolean;
     /**
-     * The sort applied to this response.
+     * The `status` applied to this response.
+     */
+    status?: "live" | "closed" | "all";
+    /**
+     * The sort applied to this response. `recently_closed` for `status=closed`, which has a fixed order.
      */
     sort?: string;
+    /**
+     * True when the response is the logged-in (`read:explore`) view.
+     */
+    personalized?: boolean;
     /**
      * The filters applied to this response (validated values), empty when none.
      */
@@ -441,71 +550,13 @@ export type OfferingListEnvelope = {
   };
 };
 
-export type PartnerInviteListEnvelope = {
-  data?: Array<PartnerInvite>;
-};
-
 export type PartnerWebhookSubscriptionListEnvelope = {
   data?: Array<PartnerWebhookSubscription>;
-};
-
-export type SpvWithMetaEnvelope = {
-  data?: Spv;
-  meta?: {
-    request_id?: string;
-  };
 };
 
 export type SyndicateDealListEnvelope = {
   data?: Array<SyndicateDeal>;
   meta?: PaginationMeta;
-};
-
-export type WebhookSubscriptionListEnvelope = {
-  data?: Array<WebhookSubscription>;
-  meta?: {
-    /**
-     * Number of active subscriptions
-     */
-    total?: number;
-    /**
-     * Maximum subscriptions per application
-     */
-    limit?: number;
-  };
-};
-
-export type WebhookSubscriptionWithRecentDeliveriesEnvelope = {
-  data?: WebhookSubscription & {
-    /**
-     * Last 10 delivery attempts
-     */
-    recent_deliveries?: Array<WebhookDelivery>;
-  };
-};
-
-export type WebhookSubscriptionWithSecret2Envelope = {
-  data?: WebhookSubscription & {
-    /**
-     * New HMAC signing secret
-     */
-    secret?: string;
-  };
-};
-
-export type WebhookSubscriptionWithSecretEnvelope = {
-  data?: WebhookSubscription & {
-    /**
-     * HMAC signing secret. **Only returned on create.**
-     * Store this securely - it cannot be retrieved later.
-     *
-     */
-    secret?: string;
-  };
-};
-
-export type AttributionStatsEnvelope = {
-  data?: AttributionStats;
 };
 
 export type AuditEventListEnvelope = {
@@ -696,6 +747,72 @@ export type InvestorListEnvelope = {
   meta?: PaginationMeta;
 };
 
+export type MemberLink = {
+  /**
+   * Opaque id (`il_` prefix today). Do not parse it.
+   */
+  id?: string;
+  type?: "member_link";
+  attributes?: {
+    /**
+     * The offering's deal page carrying this link's token. Send the member here.
+     */
+    url?: string;
+    /**
+     * `created` nobody has redeemed it; `bound` a Wefunder account holds it;
+     * `invested` that account invested in this offering after the link was
+     * minted (kept after a cancel); `canceled` canceled before any investment.
+     *
+     */
+    state?: "created" | "bound" | "invested" | "canceled";
+    /**
+     * Your member id, as passed at create.
+     */
+    reference?: string | null;
+    /**
+     * The bound account's `usr_` id. Never an email.
+     */
+    wefunder_user_id?: string | null;
+    /**
+     * The `inv_` id of the investment made through this link.
+     */
+    investment_id?: string | null;
+    /**
+     * The offering's id.
+     */
+    offering?: string;
+    created_at?: string;
+  };
+};
+
+export type MemberLinkCreateInput = {
+  /**
+   * Your opaque member id. Repeating it on the same offering returns the live link.
+   */
+  reference?: string;
+  /**
+   * Pre-bind the link to a member whose Wefunder account you know (`usr_` id). A repeated `reference` naming a different account is a 409.
+   */
+  wefunder_user_id?: string;
+};
+
+export type MemberLinkEnvelope = {
+  data?: MemberLink;
+  meta?: {
+    request_id?: string;
+  };
+};
+
+export type MemberLinkListEnvelope = {
+  data?: Array<MemberLink>;
+  meta?: {
+    has_more?: boolean;
+    page_count?: number;
+    request_id?: string;
+    next_cursor?: string;
+  };
+};
+
 export type InviteLinkEnvelope = {
   data?: InviteLink;
   meta?: {
@@ -713,30 +830,12 @@ export type InviteLinkListEnvelope = {
   };
 };
 
-export type MarketingPartnerEnvelope = {
-  data?: MarketingPartner;
-};
-
 export type OfferingEnvelope = {
   data?: Offering;
 };
 
 export type PartnerInvestmentEnvelope = {
   data?: PartnerInvestment;
-};
-
-export type PartnerInvestmentListEnvelope = {
-  data?: Array<PartnerInvestment>;
-  meta?: PaginationMeta;
-};
-
-export type PartnerInvestorListEnvelope = {
-  data?: Array<PartnerInvestor>;
-  meta?: PaginationMeta;
-};
-
-export type PartnerInviteEnvelope = {
-  data?: PartnerInvite;
 };
 
 export type PartnerWebhookEventEnvelope = {
@@ -749,13 +848,6 @@ export type PartnerWebhookSubscriptionEnvelope = {
 
 export type PartnerWebhookSubscriptionWithSecretEnvelope = {
   data?: PartnerWebhookSubscriptionWithSecret;
-};
-
-export type SpvStatusEnvelope = {
-  data?: SpvStatus;
-  meta?: {
-    request_id?: string;
-  };
 };
 
 export type SpvEnvelope = {
@@ -782,11 +874,6 @@ export type SpvCancelIntentEnvelope = {
   };
 };
 
-export type SpvListEnvelope = {
-  data?: Array<Spv>;
-  meta?: PaginationMeta;
-};
-
 export type SyndicateDealDetailEnvelope = {
   data?: SyndicateDeal;
 };
@@ -796,23 +883,61 @@ export type SyndicateDealEnvelope = {
 };
 
 /**
- * The deal plus the pending close_deal intent a permitted human approves to close it.
+ * The drafted deal, plus the company the SPV invests in.
  */
-export type SyndicateDealCloseIntentEnvelope = {
+export type SyndicateDealCreatedEnvelope = {
   data?: SyndicateDeal;
   meta?: {
-    close_deal_intent?: IntentReview;
+    target_company?: {
+      id?: string;
+      name?: string;
+    } | null;
   };
 };
 
-/**
- * The deal plus the pending finalize_deal intent a permitted human approves to finalize it.
- */
-export type SyndicateDealFinalizeIntentEnvelope = {
-  data?: SyndicateDeal;
-  meta?: {
-    finalize_deal_intent?: IntentReview;
+export type SyndicateDealReadinessEnvelope = {
+  data?: {
+    /**
+     * The deal's `ofr_` id.
+     */
+    id?: string;
+    type?: "syndicate_deal_readiness";
+    attributes?: {
+      /**
+       * Every item before `sign_and_open` is complete.
+       */
+      ready?: boolean;
+      status?: "upcoming" | "open" | "closed" | "canceled";
+      items?: Array<SyndicateDealReadinessItem>;
+    };
   };
+};
+
+export type SyndicateDealReadinessItem = {
+  key?:
+    | "target_company"
+    | "terms"
+    | "allocation"
+    | "series"
+    | "master_llc"
+    | "advisor"
+    | "conflict_disclosures"
+    | "carry_agreements"
+    | "sign_and_open";
+  label?: string;
+  status?: "complete" | "missing" | "needs_human" | "needs_staff" | "blocked";
+  /**
+   * What is missing, in a sentence.
+   */
+  detail?: string | null;
+  /**
+   * The wefunder.com page where a person completes this step, when there is one.
+   */
+  action_url?: string | null;
+  /**
+   * Keys of the items that must be complete first.
+   */
+  blocked_by?: Array<string>;
 };
 
 export type SyndicateDetailEnvelope = {
@@ -926,10 +1051,6 @@ export type UserEnvelope = {
   data?: User;
 };
 
-export type WebhookSubscriptionEnvelope = {
-  data?: WebhookSubscription;
-};
-
 /**
  * A public offering (a fundraise), addressed by its id (`ofr_...`). Returned by the
  * Explore endpoints. Monetary fields are USD decimal strings — parse them as decimals, not
@@ -1011,6 +1132,14 @@ export type Offering = {
      */
     funding_target?: string | null;
     /**
+     * The most this round may raise, in USD as a decimal string (the same denomination as
+     * `funding_target`). For a Reg CF round, the maximum offering amount on its Form C (the
+     * largest funding tier); otherwise the maximum the company set for the round. Null when
+     * neither exists. Raising past `funding_target` up to this amount is normal.
+     *
+     */
+    max_funding_target?: string | null;
+    /**
      * Minimum investment in USD, as a decimal string.
      */
     min_investment?: string | null;
@@ -1027,10 +1156,28 @@ export type Offering = {
     investor_count?: number | null;
     started_at?: string | null;
     /**
-     * When an open round is scheduled to stop accepting investments. Null when no date is set or the round is not open.
+     * When an open round is scheduled to stop accepting investments. Null when no date is set or the round is not open. A round can remain open past this date until it is actually closed, so use `status`, not this date against the clock, to decide whether it accepts investments.
      */
     closes_at?: string | null;
+    /**
+     * When the round finished raising. Null while the round is upcoming or open (the scheduled close is `closes_at`); set only once `status` is `closed`.
+     */
     closed_at?: string | null;
+    /**
+     * The round's latest accepted Form C (or Form C/A amendment) on SEC EDGAR, a public sec.gov
+     * URL. Reg CF rounds only; null until the Form C is filed and for every other exemption.
+     * For the round a company page shows, the same filing is `filing.sec_filing_url` in
+     * `GET /companies/{id}/disclosures`.
+     *
+     */
+    form_c_url?: string | null;
+    /**
+     * The legal name of the Wefunder SPV (a series LLC that co-issues the round) that investors
+     * hold through, e.g. "WF Acme 2025, a series of Wefunder SPV, LLC". Null when investors hold
+     * the security directly.
+     *
+     */
+    spv_legal_name?: string | null;
     /**
      * **Logged-in view only** (`read:explore`). `false` when a logged-out visitor could
      * not see this offering — it is in the response only because of who the authorizing
@@ -1137,6 +1284,14 @@ export type CompanyDisclosures = {
      * The round whose Form C this is (`ofr_...`).
      */
     offering_id?: string;
+    /**
+     * ISO 4217 code, upper-case, of the round's own figures: `use_of_funds`, `prior_offerings`, `outstanding_notes`, `outstanding_debts` and `related_parties`. The round's currency — `USD` for a Reg CF round, `EUR` for an ECSP round. The financial statements, `ratios.revenue_per_employee` and `current_position` are in `financials_currency` instead.
+     */
+    currency?: string;
+    /**
+     * ISO 4217 code of the financial statements AND the founder's current-position figures (cash on hand, average monthly revenue, cost of goods, expenses) and `ratios.revenue_per_employee`. Falls back to `currency`. On the disclosures editor these fields share one denomination, which is this one. ISO 4217 code, upper-case, of the Form C `financial_statements` and of `ratios.revenue_per_employee`. The currency the issuer declared for its statements; equals `currency` unless the issuer declared another (a EUR round can file DKK, RON, GBP or USD statements).
+     */
+    financials_currency?: string;
     filing?: {
       exemption?: Exemption;
       /**
@@ -1185,7 +1340,13 @@ export type CompanyDisclosures = {
        */
       return_on_assets_percent?: string | null;
       /**
-       * (Short-term + long-term debt) / total assets × 100.
+       * (Current + non-current liabilities) / total assets × 100. Liabilities, not debt — see `current_liabilities`.
+       */
+      liabilities_to_assets_percent?: string | null;
+      /**
+       * Deprecated alias of `liabilities_to_assets_percent` (same value). Will be removed in a future dated version.
+       *
+       * @deprecated
        */
       debt_to_assets_percent?: string | null;
       /**
@@ -1193,7 +1354,7 @@ export type CompanyDisclosures = {
        */
       cash_to_assets_percent?: string | null;
       /**
-       * USD, decimal string.
+       * Decimal string in `financials_currency`.
        */
       revenue_per_employee?: string | null;
     } | null;
@@ -1202,24 +1363,28 @@ export type CompanyDisclosures = {
      */
     current_position?: {
       /**
-       * USD, decimal string.
+       * ISO 4217 code every amount in this object is denominated in. Equals the top-level `financials_currency` (the currency the founder declared for the financial statements; the same field feeds these figures on the disclosures editor).
+       */
+      currency?: string;
+      /**
+       * Decimal string in `financials_currency`.
        */
       cash_on_hand?: string | null;
       cash_on_hand_as_of?: string | null;
       /**
-       * USD, decimal string.
+       * Decimal string in `financials_currency`.
        */
       average_monthly_revenue?: string | null;
       /**
-       * USD, decimal string.
+       * Decimal string in `financials_currency`.
        */
       average_monthly_cost_of_goods?: string | null;
       /**
-       * USD, decimal string.
+       * Decimal string in `financials_currency`.
        */
       average_monthly_expenses?: string | null;
       /**
-       * USD, decimal string.
+       * Decimal string in `financials_currency`.
        */
       average_monthly_burn?: string | null;
     };
@@ -1241,7 +1406,7 @@ export type CompanyDisclosures = {
      */
     use_of_funds?: Array<{
       /**
-       * USD, decimal string.
+       * Decimal string in `currency`.
        */
       if_raised?: string | null;
       plan?: string | null;
@@ -1318,13 +1483,31 @@ export type CompanyDisclosures = {
 };
 
 /**
- * One fiscal year's figures from the Form C, USD decimal strings (null where not reported).
+ * One fiscal year's figures from the Form C, decimal strings in the payload's `financials_currency` (null where not reported).
  */
 export type FiscalYearFinancials = {
   total_assets?: string | null;
   cash_and_equivalents?: string | null;
   accounts_receivable?: string | null;
+  /**
+   * Total current liabilities as filed on the Form C balance sheet — including SAFE and convertible-note liabilities, accrued expenses and deferred revenue, not only borrowed money. For borrowings see `outstanding_notes` and `outstanding_debts`, which itemize each instrument with its principal.
+   */
+  current_liabilities?: string | null;
+  /**
+   * Total non-current liabilities as filed on the Form C balance sheet. Same caveat as `current_liabilities`.
+   */
+  non_current_liabilities?: string | null;
+  /**
+   * Deprecated alias of `current_liabilities` (same value): the figure is total current liabilities, not short-term debt. Will be removed in a future dated version.
+   *
+   * @deprecated
+   */
   short_term_debt?: string | null;
+  /**
+   * Deprecated alias of `non_current_liabilities` (same value): the figure is total non-current liabilities, not long-term debt. Will be removed in a future dated version.
+   *
+   * @deprecated
+   */
   long_term_debt?: string | null;
   revenue?: string | null;
   cost_of_goods_sold?: string | null;
@@ -1591,7 +1774,7 @@ export type CompanyQuestion = {
     /**
      * In a search (`q`), whether the question's own text or one of its answers matched. Null otherwise.
      */
-    match?: "question" | "answer";
+    match?: "question" | "answer" | null;
     answers?: Array<{
       /**
        * The answer's id (`cmt_...`).
@@ -1661,6 +1844,46 @@ export type Company = {
       state?: string | null;
       country?: string | null;
     };
+    /**
+     * The company's legal name, as the company entered it. The name on a filed Form C is `business.legal_name` in `/disclosures`.
+     */
+    legal_name?: string | null;
+    /**
+     * The company's legal form as the company entered it, free text and not normalized (e.g.
+     * "Corporation", "Limited Liability Company", "llc"). The form on a filed Form C is
+     * `business.legal_form` in `/disclosures`. The EIN is deliberately not served.
+     *
+     */
+    legal_form?: string | null;
+    /**
+     * The company's website, as an absolute URL. Null when none is set or the stored value is not a usable link.
+     */
+    website_url?: string | null;
+    /**
+     * The company's X (Twitter) profile, as an absolute URL (a stored handle is expanded). Null when none is set.
+     */
+    twitter_url?: string | null;
+    /**
+     * The company's LinkedIn page, as an absolute URL. Null when none is set.
+     */
+    linkedin_url?: string | null;
+    /**
+     * The company's Facebook page, as an absolute URL. Null when none is set.
+     */
+    facebook_url?: string | null;
+    /**
+     * The company's Instagram profile, as an absolute URL. Null when none is set.
+     */
+    instagram_url?: string | null;
+    /**
+     * The company's answer to "Who should be able to see your campaign?" on wefunder.com: true
+     * for "as public as possible" (eligible for the Explore page and Wefunder's marketing),
+     * false for "as private as possible". False does not hide the company or its rounds —
+     * anything this API returns is visible to the caller — but the company has asked not to be
+     * promoted, so an app that redistributes listings should respect it.
+     *
+     */
+    promotion_opt_in?: boolean;
     /**
      * True when the round the page shows this viewer is live (accepting investments or reservations). False for a funded company, or one with no round the viewer may see.
      */
@@ -1741,6 +1964,9 @@ export type WefunderRound = {
   amount_raised?: string | null;
   investor_count?: number | null;
   opened_at?: string | null;
+  /**
+   * When the round finished raising. Null while the round is open; a live round's scheduled close is `current_raise.closes_at`.
+   */
   closed_at?: string | null;
 };
 
@@ -1967,6 +2193,11 @@ export type User = {
    */
   id?: string;
   type?: string;
+  /**
+   * Present only when the token holds `read:profile`. Without it, `GET /users/me`
+   * returns just `id` and `type`.
+   *
+   */
   attributes?: {
     email?: string;
     username?: string;
@@ -1982,7 +2213,7 @@ export type User = {
 };
 
 export type Campaign = {
-  id?: number;
+  id?: string;
   type?: string;
   attributes?: {
     state?: string;
@@ -2040,288 +2271,6 @@ export type Error = {
 };
 
 /**
- * Aggregate attribution statistics for a campaign
- */
-export type AttributionStats = {
-  campaign_id?: number;
-  period?: {
-    start_date?: string;
-    end_date?: string;
-  };
-  totals?: {
-    /**
-     * Total number of attributed investments
-     */
-    investment_count?: number;
-    /**
-     * Total dollar amount of attributed investments
-     */
-    total_amount?: number;
-    /**
-     * Count of unique investors
-     */
-    unique_investors?: number;
-    /**
-     * UTM clicks to investments (percentage)
-     */
-    conversion_rate?: number;
-  };
-  /**
-   * Attribution quality metrics
-   */
-  quality_breakdown?: {
-    /**
-     * Conversions within 1 hour of click
-     */
-    direct?: number;
-    /**
-     * Conversions 1-24 hours after click
-     */
-    assisted?: number;
-    /**
-     * Conversions over 24 hours after click
-     */
-    delayed?: number;
-  };
-  /**
-   * Breakdown by UTM source
-   */
-  by_source?: Array<{
-    utm_source?: string;
-    investment_count?: number;
-    total_amount?: number;
-  }>;
-  /**
-   * Breakdown by UTM campaign
-   */
-  by_campaign?: Array<{
-    utm_campaign?: string;
-    investment_count?: number;
-    total_amount?: number;
-  }>;
-};
-
-/**
- * An attributed investment with anonymized investor data.
- * No PII is exposed - investor identity is represented by opaque tokens.
- *
- */
-export type AnonymizedAttribution = {
-  /**
-   * Opaque token identifying the investment (32 characters)
-   */
-  investment_token?: string;
-  /**
-   * Opaque token identifying the investor (32 characters).
-   * Same investor gets different tokens for different campaigns.
-   *
-   */
-  investor_token?: string;
-  /**
-   * Investment amount tier (not exact value).
-   * Ranges: small ($1-999), medium ($1,000-9,999), large ($10,000+)
-   *
-   */
-  amount_tier?: "small" | "medium" | "large";
-  /**
-   * When the investment was applied
-   */
-  invested_at?: string;
-  /**
-   * Current investment status
-   */
-  status?: {
-    /**
-     * Investment processing stage (matches /manage page)
-     */
-    bucket?:
-      | "draft"
-      | "no_payment_yet"
-      | "pending"
-      | "is_ready"
-      | "confirmed"
-      | "canceled";
-    /**
-     * Whether the investment appears on founder progress bar (likely to complete)
-     */
-    progress_bar?: boolean;
-  };
-  /**
-   * UTM attribution data
-   */
-  attribution?: {
-    utm_source?: string;
-    utm_campaign?: string;
-    utm_medium?: string | null;
-    utm_content?: string | null;
-    /**
-     * When the UTM link was clicked
-     */
-    clicked_at?: string;
-    /**
-     * Time from click to investment
-     */
-    time_to_invest_bucket?: "direct" | "assisted" | "delayed";
-    /**
-     * Attribution quality assessment
-     */
-    quality_score?: "high" | "medium" | "low" | "suspicious";
-    /**
-     * Number of other UTM sources in the attribution window
-     */
-    competing_sources?: number;
-  };
-};
-
-/**
- * A webhook subscription for attribution events
- */
-export type WebhookSubscription = {
-  id?: number;
-  campaign_id?: number;
-  target_url?: string;
-  events?: Array<
-    "investment.applied" | "investment.confirmed" | "investment.canceled"
-  >;
-  /**
-   * Whether the subscription is active
-   */
-  active?: boolean;
-  /**
-   * Number of consecutive delivery failures (resets on success)
-   */
-  consecutive_failures?: number;
-  created_at?: string;
-  updated_at?: string;
-};
-
-/**
- * A single webhook delivery attempt
- */
-export type WebhookDelivery = {
-  id?: number;
-  /**
-   * Unique delivery identifier (use for idempotency)
-   */
-  delivery_uuid?: string;
-  /**
-   * The event that triggered this delivery
-   */
-  event_type?: string;
-  status?: "pending" | "delivered" | "failed";
-  /**
-   * Number of delivery attempts
-   */
-  attempts?: number;
-  /**
-   * HTTP status code from the last attempt
-   */
-  response_code?: number | null;
-  last_attempt_at?: string | null;
-  created_at?: string;
-};
-
-/**
- * A registered marketing partner
- */
-export type MarketingPartner = {
-  id?: number;
-  user_id?: number;
-  company_name?: string;
-  website?: string | null;
-  status?: "pending" | "approved" | "rejected";
-  created_at?: string;
-};
-
-/**
- * An invite to establish a partner-company connection
- */
-export type PartnerInvite = {
-  id?: number;
-  /**
-   * Unique invite token (use in accept URL)
-   */
-  token?: string;
-  /**
-   * Who initiated the invite
-   */
-  direction?: "partner_to_founder" | "founder_to_partner";
-  status?: "pending" | "accepted" | "expired" | "revoked";
-  /**
-   * Access level granted on acceptance (1=anonymized, 2=detailed)
-   */
-  access_level?: number;
-  /**
-   * Target company (null for partner_to_founder until accepted)
-   */
-  company_id?: number | null;
-  company_name?: string | null;
-  /**
-   * Partner email (for founder_to_partner invites)
-   */
-  partner_email?: string | null;
-  expires_at?: string;
-  created_at?: string;
-  /**
-   * URL to accept the invite
-   */
-  accept_url?: string;
-};
-
-/**
- * Full attribution data with investor PII (Tier 2 - founders only).
- * Returned when detail_level=full is requested by an authorized founder.
- *
- */
-export type FullAttribution = {
-  /**
-   * Real Wefunder investment ID
-   */
-  investment_id?: number;
-  /**
-   * Opaque token (same as anonymized response)
-   */
-  investment_token?: string;
-  /**
-   * Full investor details
-   */
-  investor?: {
-    id?: number;
-    name?: string;
-    email?: string;
-    username?: string;
-  };
-  /**
-   * Exact investment amount in dollars
-   */
-  amount?: number;
-  invested_at?: string;
-  status?: {
-    bucket?:
-      | "draft"
-      | "no_payment_yet"
-      | "pending"
-      | "is_ready"
-      | "confirmed"
-      | "canceled";
-    progress_bar?: boolean;
-  };
-  /**
-   * UTM attribution data (same as anonymized)
-   */
-  attribution?: {
-    utm_source?: string;
-    utm_campaign?: string;
-    utm_medium?: string | null;
-    utm_content?: string | null;
-    clicked_at?: string;
-    time_to_invest_bucket?: "direct" | "assisted" | "delayed";
-    quality_score?: "high" | "medium" | "low" | "suspicious";
-    competing_sources?: number;
-  };
-};
-
-/**
  * JSON:API resource representing a syndicate
  */
 export type Syndicate = {
@@ -2356,6 +2305,10 @@ export type Syndicate = {
      * Whether accredited applicants are approved automatically.
      */
     auto_accept_accredited_members?: boolean;
+    /**
+     * Whether an accredited invitee who accepts a join session is admitted immediately. Read it to pick the consent copy ("Join" vs "Request to join") before minting a join session.
+     */
+    auto_approve_join_sessions?: boolean;
     /**
      * Whether members must invest through the syndicate's fund.
      */
@@ -2428,8 +2381,7 @@ export type SyndicateMember = {
     user_name?: string | null;
     /**
      * **Moderator-only.** User email (or invite_email for pending invitees).
-     * Returns null for non-moderator callers. Requires the requesting user
-     * to be a manager/operator of the syndicate.
+     * Requires the requesting user to be a manager/operator of the syndicate.
      *
      */
     user_email?: string | null;
@@ -2625,6 +2577,9 @@ export type SyndicateDeal = {
     description?: string | null;
     created_at?: string;
     updated_at?: string;
+    /**
+     * When the deal finished raising. Null while `status` is `upcoming` or `open`.
+     */
     closed_at?: string | null;
     /**
      * ISO 8601 timestamp when funding opened
@@ -2643,6 +2598,10 @@ export type PortfolioCompanyRef = {
   id?: string;
   name?: string;
   slug?: string | null;
+  /**
+   * The company's page on wefunder.com, absolute. This is the link target the [attribution rule](/resources/acceptable-use#attribution) asks for wherever you show the position; do not link to the investor's Wefunder portfolio instead. Null when the company no longer has a public page.
+   */
+  url?: string | null;
 };
 
 /**
@@ -2663,14 +2622,28 @@ export type PortfolioSecurity = {
   security?: SecuritySummary | null;
   early_bird?: boolean;
   /**
-   * The offering's issue terms. Fields are null when the term does not apply to the security type.
+   * The offering's issue terms. A field is null when the term does not apply to the security type, and also when the security has none: an uncapped SAFE or note has a null `note_cap_cents` (with `uncapped: true`), and a security with no discount, including one recorded as zero, has a null `note_discount`.
    */
   terms?: {
     /**
      * Issue price per share as a decimal string
      */
     share_price?: string | null;
+    /**
+     * Lower-case ISO 4217 code of `note_cap_cents` and `premoney_valuation_cents`, the currency the founder entered them in. USD when the round's terms are explicitly USD-denominated (checkout prices them in USD then); otherwise a SAFE's cap is in the round's declared financials currency (falling back to the round's), while equity pre-money and a convertible note's valuation are in the round currency. A EUR-funded SAFE can therefore carry a `usd` or `dkk` cap. `share_price` and every other `_cents` field on the position stay in the position's top-level `currency`.
+     */
+    currency?: string;
+    /**
+     * The valuation cap of a SAFE or convertible note, in cents of `terms.currency`. Null when the security is uncapped (see `uncapped`) or has no cap.
+     */
     note_cap_cents?: number | null;
+    /**
+     * `true` when a SAFE or convertible note has no valuation cap, `false` when it has one. Null for securities that never carry a cap (equity, revenue share, debt, fund, other). Same rule as `uncapped` in an offering's `security.terms`.
+     */
+    uncapped?: boolean | null;
+    /**
+     * Conversion discount as a decimal string percentage (`"20.0"` is 20%). Null when there is no discount, including a discount recorded as zero, the same as `discount_percent` in an offering's `security.terms`.
+     */
     note_discount?: string | null;
     premoney_valuation_cents?: number | null;
   };
@@ -2750,12 +2723,24 @@ export type PortfolioPosition = {
      * `realized_gain_cents`.
      *
      */
-    exit_reason?: "ipo" | "acquisition" | "buyback" | "failed" | "winding_down";
+    exit_reason?:
+      "ipo" | "acquisition" | "buyback" | "failed" | "winding_down" | null;
+    /**
+     * The date the position ended (`YYYY-MM-DD`): the effective date of
+     * the company's recorded exit. Set only for `exited` and `failed`
+     * positions, and null for older exits recorded before Wefunder kept
+     * exit dates, even when `exit_reason` is present.
+     *
+     */
+    exited_on?: string | null;
     invested_at?: string | null;
+    /**
+     * ISO 4217 code, lower-case, of the investment amounts on this position and its `securities` (cost basis, values, gains, share price) — the offering's currency: `usd`, or `eur` for an ECSP round. A security's note cap and pre-money valuation carry their own `terms.currency`, which can differ.
+     */
     currency?: string;
     cost_basis_cents?: number;
     /**
-     * Estimated current value; based on cost basis when no newer valuation has been recorded.
+     * Estimated current value. It equals `cost_basis_cents` until a later priced round, a recorded valuation mark, or an exit marks the position, so an active position reading at cost is expected, not missing data.
      */
     current_value_cents?: number;
     /**
@@ -2804,7 +2789,14 @@ export type PortfolioSummaryEnvelope = {
   data?: {
     type?: string;
     attributes?: {
+      /**
+       * ISO 4217 code, lower-case, of the four `total_*_cents` figures. Money is summed in one currency only: `usd` when any position is in USD, otherwise the portfolio's only currency (`eur`).
+       */
       currency?: string;
+      /**
+       * Currencies of positions left out of the totals because they are not in `currency` (an investor holding both USD and EUR rounds sees `["eur"]`). Empty for most portfolios. Those positions still count in the status counts and are listed, each with its own `currency`, by the positions endpoint.
+       */
+      other_currencies?: Array<string>;
       total_cost_basis_cents?: number;
       total_current_value_cents?: number;
       total_unrealized_gain_cents?: number;
@@ -2828,7 +2820,14 @@ export type SyndicatePortfolioSummaryEnvelope = {
   data?: {
     type?: string;
     attributes?: {
+      /**
+       * ISO 4217 code, lower-case, of the four `total_*_cents` figures. Money is summed in one currency only: `usd` when any position is in USD, otherwise the portfolio's only currency (`eur`).
+       */
       currency?: string;
+      /**
+       * Currencies of positions left out of the totals because they are not in `currency` (an investor holding both USD and EUR rounds sees `["eur"]`). Empty for most portfolios. Those positions still count in the status counts and are listed, each with its own `currency`, by the positions endpoint.
+       */
+      other_currencies?: Array<string>;
       total_cost_basis_cents?: number;
       total_current_value_cents?: number;
       total_unrealized_gain_cents?: number;
@@ -2876,8 +2875,9 @@ export type DealInvestor = {
     user?: string;
     user_name?: string | null;
     /**
-     * **Moderator-only.** Investor's email address.
-     * Returns null for non-moderator callers (users who are not a manager/operator).
+     * Investor's email address. Always present: the endpoint itself is
+     * manager/operator only (ordinary members get 403), so there is no
+     * non-moderator caller to hide it from.
      *
      */
     user_email?: string | null;
@@ -2958,11 +2958,16 @@ export type SyndicateStatistics = {
       [key: string]: number;
     };
     /**
-     * Total number of linked deals (all linked fundraises)
+     * Rounds in the syndicate's visible deal set, in any state. Excludes invite-only
+     * companies' rounds and testing-the-waters rounds of directory companies, so this
+     * is not every round the syndicate has been linked to.
+     *
      */
     total_deals?: number;
     /**
-     * Number of currently live deals (open/oversubscribed/closing states)
+     * The open, oversubscribed, or closing subset of `total_deals`; the rows
+     * `GET /syndicates/{syndicate_id}/deals` lists.
+     *
      */
     live_deals?: number;
     /**
@@ -3008,7 +3013,7 @@ export type Intent = {
      *
      */
     resource_id?: string | number | null;
-    impact_summary?: string;
+    impact_summary?: string | null;
     /**
      * URL where a human can review and approve/reject this intent
      */
@@ -3049,7 +3054,7 @@ export type AuditEvent = {
     actor_type?: string;
     actor_name?: string | null;
     action?: string;
-    resource_type?: string;
+    resource_type?: string | null;
     /**
      * For Club resources, the syndicate's id (`syn_...`). For every other
      * `resource_type` (contract change plans, tranches, applications, ...) the
@@ -3142,7 +3147,7 @@ export type SpvTerms = {
   /**
    * Required when `structure` is `safe`.
    */
-  safe_type?: "post_money" | "pre_money";
+  safe_type?: "post_money" | "pre_money" | null;
   valuation_cap_cents: number;
   /**
    * Discount percentage (e.g. 20 for 20%).
@@ -3228,54 +3233,6 @@ export type Spv = {
     opened_at?: string | null;
     closing_at?: string | null;
     closed_at?: string | null;
-  };
-};
-
-/**
- * An investor in an SPV, aggregated across all their investments in it.
- * `full_name` and `email` are null unless the token holds `read:investors:pii`.
- *
- */
-export type PartnerInvestor = {
-  id?: string;
-  type?: string;
-  attributes?: {
-    full_name?: string | null;
-    email?: string | null;
-    accredited?: boolean;
-    /**
-     * Sum of the investor's active investments in this SPV.
-     */
-    total_invested_cents?: number;
-    investment_count?: number;
-    /**
-     * When the investor first invested in this SPV.
-     */
-    created_at?: string | null;
-  };
-};
-
-export type SpvStatus = {
-  id?: string;
-  type?: string;
-  attributes?: {
-    status?: "draft" | "open" | "closing" | "closed" | "canceled";
-    /**
-     * The offering is awaiting Wefunder review before it can open.
-     */
-    requires_ops_review?: boolean;
-    /**
-     * A disbursement is queued for this SPV but funds have not moved yet.
-     */
-    disbursement_scheduled?: boolean;
-    /**
-     * Estimated date funds will be disbursed — 3 business days from when the close executed and the SPV entered the disbursement queue. Present only while `status` is `closing` (awaiting disbursement); null before close and once funds have moved.
-     */
-    expected_disbursement_at?: string | null;
-    /**
-     * The investor roster has been finalized.
-     */
-    finalized_investor_list?: boolean;
   };
 };
 
@@ -3376,16 +3333,42 @@ export type InviteLink = {
      * Shareable invite URL. Carries the access token, not the id.
      */
     url?: string;
+    /**
+     * `true` for a reusable (shareable) link, `false` for a per-person
+     * invite. Fixed at creation. Use this, not the presence of `email`, to
+     * tell the two apart.
+     *
+     */
+    reuse?: boolean;
     allocation_cents?: number | null;
     max_uses?: number | null;
     uses_count?: number;
     /**
+     * How many times the link was clicked through: a click is recorded when
+     * the recipient continues past the link's landing page into the
+     * investment flow (loading the page alone is not counted, since mail
+     * clients prefetch links). Visits that found the link canceled or the
+     * offering closed are not clicks, nor are sends. Recorded for per-person
+     * links only; a reusable link reports 0 (use `uses_count` for its
+     * claims).
+     *
+     */
+    click_count?: number;
+    /**
+     * When the link was first clicked; null if it never was. A click, not an email open.
+     */
+    first_clicked_at?: string | null;
+    /**
      * False once the link is canceled (soft-deleted).
      */
     active?: boolean;
+    /**
+     * When the link was canceled; null while it is active.
+     */
+    canceled_at?: string | null;
     created_at?: string;
     /**
-     * Per-person only — recipient email.
+     * Per-person only — the recipient email you supplied at create. Always `null` for an invite addressed by `wefunder_user_id`, which never returns the account's email.
      */
     email?: string | null;
     /**
@@ -3398,9 +3381,13 @@ export type InviteLink = {
      * investment exists), `revoked` (canceled).
      *
      */
-    status?: "pending" | "opened" | "invested" | "revoked";
+    status?: "pending" | "opened" | "invested" | "revoked" | null;
     /**
-     * Per-person only.
+     * Per-person only. The first click, not an email open (deprecated: use
+     * `first_clicked_at`, which has the same value).
+     *
+     *
+     * @deprecated
      */
     opened_at?: string | null;
     /**
@@ -3416,6 +3403,13 @@ export type InviteLink = {
      */
     events?: Array<{
       event?: string;
+      /**
+       * The account that acted (`usr_...`): the sender of a `send` or
+       * `resend`, or a signed-in visitor's click. Null when anonymous.
+       * Never an email.
+       *
+       */
+      wefunder_user_id?: string | null;
       city?: string | null;
       country_code?: string | null;
       created_at?: string;
@@ -3446,9 +3440,28 @@ export type InvestmentSessionCreateInput = {
    */
   allocation_cents?: number | null;
   /**
-   * Where to send the recipient after they complete the session.
+   * Where to send the recipient after they complete the session. An absolute `https`
+   * URL on the origin (scheme, host and port) of one of your app's registered OAuth
+   * redirect URIs, such as an iOS universal link or Android app link, or a URL in a
+   * custom scheme one of those redirect URIs uses (`com.partner.app://checkout/done`).
+   * `http` is accepted only on a loopback host one of your redirect URIs uses. Anything
+   * else is a `422 validation_error`.
+   * See [Investment sessions on mobile](/guides/investment-sessions-mobile).
+   *
    */
   success_url?: string | null;
+  /**
+   * Where to send the recipient when they cancel the session on the hosted page, or open
+   * it after it was canceled or expired. Same rules as `success_url`: an `https` URL on
+   * a registered redirect URI's origin, or a URL in a registered custom scheme.
+   * Wefunder appends `session_id` (the session's `is_` id) and `reason` to the query
+   * string, keeping any parameters already on the URL. `reason` is `user_canceled`
+   * (the session is now canceled), `user_left` (the investor had already started
+   * checkout, so the session stays active until it completes or expires), `canceled`
+   * or `expired`.
+   *
+   */
+  cancel_url?: string | null;
   /**
    * Session lifetime in hours (default 720, i.e. 30 days).
    */
@@ -3481,14 +3494,17 @@ export type InvestmentSession = {
      */
     url?: string;
     spv_id?: string;
+    /**
+     * The recipient email you supplied. `null` for a session addressed by `wefunder_user_id`, directly or through an invite link addressed that way, which never returns the account's email.
+     */
     email?: string | null;
     /**
      * The fixed amount the session locks to, in cents; null when the recipient chooses their own amount.
      */
     allocation_cents?: number | null;
-    kyc_status?: "pending" | "passed" | "failed";
+    kyc_status?: "pending" | "passed" | "failed" | null;
     funding_status?:
-      "pending" | "succeeded" | "card_declined" | "insufficient_funds";
+      "pending" | "succeeded" | "card_declined" | "insufficient_funds" | null;
     /**
      * Populated once the session completes successfully.
      */
@@ -3688,6 +3704,16 @@ export type WebhookId = number;
 export type SpvId = string;
 
 /**
+ * The offering ID (prefixed, e.g. `ofr_abc123`), on the syndicate or company your app is installed on.
+ */
+export type MemberLinkOfferingId = string;
+
+/**
+ * The member link ID (prefixed, e.g. `il_abc123`). Opaque; do not parse it.
+ */
+export type MemberLinkId = string;
+
+/**
  * The invite link ID (prefixed, e.g. `il_abc123`)
  */
 export type InviteLinkId = string;
@@ -3728,7 +3754,21 @@ export type ListOfferingsData = {
      */
     cursor?: number;
     /**
-     * Result ordering:
+     * Offerings per page.
+     */
+    per_page?: number;
+    /**
+     * Which rounds to list:
+     * - `live` (default): rounds accepting investments or reservations, as on wefunder.com/explore
+     * - `closed`: rounds that finished raising, newest `closed_at` first (id breaks ties)
+     * - `all`: the live list, then the closed list
+     *
+     * Any other value is a `400`.
+     *
+     */
+    status?: "live" | "closed" | "all";
+    /**
+     * Ordering of live rounds. A `400` with `status=closed`; with `status=all` it orders the live part only.
      * - `most_raised` (default) — highest amount raised first
      * - `closing_soon` — soonest funding close first
      * - `newest` — most recently launched first
@@ -3851,9 +3891,12 @@ export type ListOfferingsData = {
 
 export type ListOfferingsErrors = {
   /**
-   * A filter value is out of vocabulary or malformed; `error.message` names the accepted values.
+   * A filter or `status` value is out of vocabulary or malformed, or a live-only parameter
+   * (`sort`, or any filter but `exemption`) was sent with `status=closed` / `status=all`.
+   * `error.message` names the accepted values and `error.details.parameter` the parameter.
+   *
    */
-  400: unknown;
+  400: Error;
   /**
    * Authentication required or token is invalid/expired. This error occurs when:
    * - No Authorization header is provided
@@ -3948,8 +3991,9 @@ export type GetCompanyDisclosuresData = {
   };
   query?: {
     /**
-     * Only these sections (`offering_id` and `filing` are always included). Omit for the whole
-     * tab; a disclosure-heavy company runs to ~100 KB. Unknown names are a 400 listing the vocabulary.
+     * Only these sections (`offering_id`, `currency`, `financials_currency` and `filing` are always
+     * included). Omit for the whole tab; a disclosure-heavy company runs to ~100 KB. Unknown names
+     * are a 400 listing the vocabulary.
      *
      */
     sections?: Array<
@@ -6077,13 +6121,8 @@ export type ListSyndicateDealInvestorsErrors = {
    */
   401: Error;
   /**
-   * The authenticated user does not have permission to access this resource.
-   * This typically means:
-   * - The user is authenticated but lacks the required OAuth scope
-   * - The resource belongs to a different user
-   * - The user's role doesn't allow this operation
-   *
-   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   * The caller is not a manager or operator of the syndicate (an ordinary member,
+   * backer, or follower), or the token lacks `read:syndicates`.
    *
    */
   403: Error;
@@ -6359,130 +6398,6 @@ export type ListSyndicatePortfolioPositionsResponses = {
 export type ListSyndicatePortfolioPositionsResponse =
   ListSyndicatePortfolioPositionsResponses[keyof ListSyndicatePortfolioPositionsResponses];
 
-export type CloseSyndicateDealData = {
-  body?: never;
-  path: {
-    /**
-     * The syndicate's id (`syn_...`).
-     */
-    syndicate_id: string;
-    /**
-     * The deal's id (`ofr_...`), as returned by the deals list. Integer ids are internal and not accepted.
-     */
-    fundraise_id: string;
-  };
-  query?: never;
-  url: "/syndicates/{syndicate_id}/deals/{fundraise_id}/close";
-};
-
-export type CloseSyndicateDealErrors = {
-  /**
-   * Authentication required or token is invalid/expired. This error occurs when:
-   * - No Authorization header is provided
-   * - The access token is invalid or malformed
-   * - The access token has expired
-   * - The access token has been revoked
-   *
-   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
-   *
-   */
-  401: Error;
-  /**
-   * The authenticated user does not have permission to access this resource.
-   * This typically means:
-   * - The user is authenticated but lacks the required OAuth scope
-   * - The resource belongs to a different user
-   * - The user's role doesn't allow this operation
-   *
-   * Check that your OAuth token includes the necessary scopes for this endpoint.
-   *
-   */
-  403: Error;
-  /**
-   * The deal does not belong to this syndicate, or fundraise_id is missing
-   */
-  422: Error;
-  /**
-   * Too many pending intents for this token (rate limited)
-   */
-  429: Error;
-};
-
-export type CloseSyndicateDealError =
-  CloseSyndicateDealErrors[keyof CloseSyndicateDealErrors];
-
-export type CloseSyndicateDealResponses = {
-  /**
-   * Close intent proposed
-   */
-  200: SyndicateDealCloseIntentEnvelope;
-};
-
-export type CloseSyndicateDealResponse =
-  CloseSyndicateDealResponses[keyof CloseSyndicateDealResponses];
-
-export type FinalizeSyndicateDealData = {
-  body?: never;
-  path: {
-    /**
-     * The syndicate's id (`syn_...`).
-     */
-    syndicate_id: string;
-    /**
-     * The deal's id (`ofr_...`), as returned by the deals list. Integer ids are internal and not accepted.
-     */
-    fundraise_id: string;
-  };
-  query?: never;
-  url: "/syndicates/{syndicate_id}/deals/{fundraise_id}/finalize";
-};
-
-export type FinalizeSyndicateDealErrors = {
-  /**
-   * Authentication required or token is invalid/expired. This error occurs when:
-   * - No Authorization header is provided
-   * - The access token is invalid or malformed
-   * - The access token has expired
-   * - The access token has been revoked
-   *
-   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
-   *
-   */
-  401: Error;
-  /**
-   * The authenticated user does not have permission to access this resource.
-   * This typically means:
-   * - The user is authenticated but lacks the required OAuth scope
-   * - The resource belongs to a different user
-   * - The user's role doesn't allow this operation
-   *
-   * Check that your OAuth token includes the necessary scopes for this endpoint.
-   *
-   */
-  403: Error;
-  /**
-   * The deal does not belong to this syndicate, or fundraise_id is missing
-   */
-  422: Error;
-  /**
-   * Too many pending intents for this token (rate limited)
-   */
-  429: Error;
-};
-
-export type FinalizeSyndicateDealError =
-  FinalizeSyndicateDealErrors[keyof FinalizeSyndicateDealErrors];
-
-export type FinalizeSyndicateDealResponses = {
-  /**
-   * Finalize intent proposed
-   */
-  200: SyndicateDealFinalizeIntentEnvelope;
-};
-
-export type FinalizeSyndicateDealResponse =
-  FinalizeSyndicateDealResponses[keyof FinalizeSyndicateDealResponses];
-
 export type PreviewIntentData = {
   body: {
     action_name: string;
@@ -6590,8 +6505,6 @@ export type CreateIntentData = {
      * The action to perform
      */
     action_name:
-      | "syndicates.close_deal"
-      | "syndicates.finalize_deal"
       | "syndicates.publish"
       | "syndicates.remove_member"
       | "syndicates.delete_draft"
@@ -6714,66 +6627,6 @@ export type GetIntentResponses = {
 
 export type GetIntentResponse = GetIntentResponses[keyof GetIntentResponses];
 
-export type ListActivityData = {
-  body?: never;
-  path?: never;
-  query?: {
-    /**
-     * Filter by connected app
-     */
-    app_id?: number;
-    /**
-     * Filter by action pattern (e.g. syndicates.* or syndicates.member.*)
-     */
-    action_pattern?: string;
-    /**
-     * Filter by resource type (e.g. Club). Must be used with resource_id.
-     */
-    resource_type?: string;
-    /**
-     * Filter by specific resource ID. Must be used with resource_type. For
-     * Club resources, pass the syndicate's id (`syn_...`).
-     *
-     */
-    resource_id?: string;
-    status?: "success" | "failure" | "denied";
-    since?: string;
-    until?: string;
-    /**
-     * Opaque cursor from the previous response's `meta.next_cursor`.
-     */
-    cursor?: string;
-    per_page?: number;
-  };
-  url: "/activity";
-};
-
-export type ListActivityErrors = {
-  /**
-   * Authentication required or token is invalid/expired. This error occurs when:
-   * - No Authorization header is provided
-   * - The access token is invalid or malformed
-   * - The access token has expired
-   * - The access token has been revoked
-   *
-   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
-   *
-   */
-  401: Error;
-};
-
-export type ListActivityError = ListActivityErrors[keyof ListActivityErrors];
-
-export type ListActivityResponses = {
-  /**
-   * Successful response
-   */
-  200: AuditEventListEnvelope;
-};
-
-export type ListActivityResponse =
-  ListActivityResponses[keyof ListActivityResponses];
-
 export type ListConnectedAppsData = {
   body?: never;
   path?: never;
@@ -6848,40 +6701,93 @@ export type RevokeConnectedAppResponses = {
 export type RevokeConnectedAppResponse =
   RevokeConnectedAppResponses[keyof RevokeConnectedAppResponses];
 
-export type GetAttributionStatsData = {
+export type ListReferralCodesData = {
   body?: never;
-  path: {
-    /**
-     * The fundraise/campaign ID
-     */
-    campaign_id: number;
-  };
+  path?: never;
   query?: {
+    active?: boolean;
     /**
-     * Filter results to attributions on or after this date. Format: YYYY-MM-DD.
-     * Defaults to 90 days ago if not specified.
+     * Cursor-based pagination token. Use the `next_cursor` value from the previous response's
+     * `meta` object to retrieve the next page of results. Omit this parameter to retrieve the
+     * first page.
      *
      */
-    start_date?: string;
-    /**
-     * Filter results to attributions on or before this date. Format: YYYY-MM-DD.
-     * Defaults to today if not specified.
-     *
-     */
-    end_date?: string;
-    /**
-     * Filter by UTM source (e.g., "GoogleAds", "facebook", "Klaviyo")
-     */
-    utm_source?: string;
-    /**
-     * Filter by UTM campaign name
-     */
-    utm_campaign?: string;
+    cursor?: number;
+    per_page?: number;
   };
-  url: "/campaigns/{campaign_id}/attribution/stats";
+  url: "/referral_codes";
 };
 
-export type GetAttributionStatsErrors = {
+export type ListReferralCodesErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+};
+
+export type ListReferralCodesError =
+  ListReferralCodesErrors[keyof ListReferralCodesErrors];
+
+export type ListReferralCodesResponses = {
+  /**
+   * Referral codes for the calling application
+   */
+  200: ReferralCodeListEnvelope;
+};
+
+export type ListReferralCodesResponse =
+  ListReferralCodesResponses[keyof ListReferralCodesResponses];
+
+export type CreateReferralCodeData = {
+  body: {
+    /**
+     * Your name for the code, e.g. a campaign or newsletter issue.
+     */
+    label: string;
+    /**
+     * Credit only investments in this company (`co_…`). Omit both `company_id` and
+     * `offering_id` for a code that credits any company. Fixed at creation.
+     *
+     */
+    company_id?: string;
+    /**
+     * Credit only investments in this offering's company (`ofr_…`). The offering must
+     * be publicly visible. Fixed at creation.
+     *
+     */
+    offering_id?: string;
+    utm?: ReferralCodeUtm;
+    /**
+     * Free-form metadata for your own use, at most 4 KB.
+     */
+    metadata?: {
+      [key: string]: unknown;
+    };
+  };
+  path?: never;
+  query?: never;
+  url: "/referral_codes";
+};
+
+export type CreateReferralCodeErrors = {
   /**
    * Authentication required or token is invalid/expired. This error occurs when:
    * - No Authorization header is provided
@@ -6905,80 +6811,43 @@ export type GetAttributionStatsErrors = {
    */
   403: Error;
   /**
-   * Too many requests in a short time period. The API enforces rate limits to ensure
-   * fair usage and system stability. When you exceed the limit, you'll receive this
-   * error along with headers indicating when you can retry.
-   *
-   * Check the `X-RateLimit-Reset` header to know when your limit will reset.
-   * Consider implementing exponential backoff in your application.
-   *
+   * The requested resource does not exist or is not visible to this token.
    */
-  429: Error;
-};
-
-export type GetAttributionStatsError =
-  GetAttributionStatsErrors[keyof GetAttributionStatsErrors];
-
-export type GetAttributionStatsResponses = {
+  404: Error;
   /**
-   * Successful response
+   * `attribution_terms_required` (with `details.acceptance_url`), `quota_exceeded`,
+   * `reserved_utm_prefix`, `invalid_params`, or `validation_error`.
+   *
    */
-  200: AttributionStatsEnvelope;
+  422: Error;
 };
 
-export type GetAttributionStatsResponse =
-  GetAttributionStatsResponses[keyof GetAttributionStatsResponses];
+export type CreateReferralCodeError =
+  CreateReferralCodeErrors[keyof CreateReferralCodeErrors];
 
-export type ListAttributedInvestmentsData = {
+export type CreateReferralCodeResponses = {
+  /**
+   * Referral code created
+   */
+  201: ReferralCodeEnvelope;
+};
+
+export type CreateReferralCodeResponse =
+  CreateReferralCodeResponses[keyof CreateReferralCodeResponses];
+
+export type GetReferralCodeData = {
   body?: never;
   path: {
     /**
-     * The fundraise/campaign ID
+     * The referral code id (`ref_…`).
      */
-    campaign_id: number;
+    id: string;
   };
-  query?: {
-    /**
-     * Cursor-based pagination token. Use the `next_cursor` value from the previous response's
-     * `meta` object to retrieve the next page of results. Omit this parameter to retrieve the
-     * first page.
-     *
-     */
-    cursor?: number;
-    /**
-     * Filter results to attributions on or after this date. Format: YYYY-MM-DD.
-     * Defaults to 90 days ago if not specified.
-     *
-     */
-    start_date?: string;
-    /**
-     * Filter results to attributions on or before this date. Format: YYYY-MM-DD.
-     * Defaults to today if not specified.
-     *
-     */
-    end_date?: string;
-    /**
-     * Filter by UTM source (e.g., "GoogleAds", "facebook", "Klaviyo")
-     */
-    utm_source?: string;
-    /**
-     * Filter by UTM campaign name
-     */
-    utm_campaign?: string;
-    /**
-     * Level of detail to return:
-     * - `anonymized` (default): Opaque tokens, amount tiers
-     * - `full`: Real IDs, exact amounts, investor PII (founders only)
-     *
-     * Marketing partners always receive anonymized data regardless of this parameter.
-     *
-     */
-    detail_level?: "anonymized" | "full";
-  };
-  url: "/campaigns/{campaign_id}/attribution/investments";
+  query?: never;
+  url: "/referral_codes/{id}";
 };
 
-export type ListAttributedInvestmentsErrors = {
+export type GetReferralCodeErrors = {
   /**
    * Authentication required or token is invalid/expired. This error occurs when:
    * - No Authorization header is provided
@@ -6991,38 +6860,167 @@ export type ListAttributedInvestmentsErrors = {
    */
   401: Error;
   /**
-   * Access denied. This typically means:
-   * - Your OAuth application hasn't been approved for Tier 1 access
-   * - Your token doesn't include the `read:attribution:anonymized` scope
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
    *
-   * To request Tier 1 access, visit https://wefunder.com/api/request-access
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
    *
    */
   403: Error;
   /**
-   * Too many requests in a short time period. The API enforces rate limits to ensure
-   * fair usage and system stability. When you exceed the limit, you'll receive this
-   * error along with headers indicating when you can retry.
-   *
-   * Check the `X-RateLimit-Reset` header to know when your limit will reset.
-   * Consider implementing exponential backoff in your application.
-   *
+   * The requested resource does not exist or is not visible to this token.
    */
-  429: Error;
+  404: Error;
 };
 
-export type ListAttributedInvestmentsError =
-  ListAttributedInvestmentsErrors[keyof ListAttributedInvestmentsErrors];
+export type GetReferralCodeError =
+  GetReferralCodeErrors[keyof GetReferralCodeErrors];
 
-export type ListAttributedInvestmentsResponses = {
+export type GetReferralCodeResponses = {
   /**
-   * Successful response
+   * The referral code
    */
-  200: AttributedInvestmentListEnvelope;
+  200: ReferralCodeEnvelope;
 };
 
-export type ListAttributedInvestmentsResponse =
-  ListAttributedInvestmentsResponses[keyof ListAttributedInvestmentsResponses];
+export type GetReferralCodeResponse =
+  GetReferralCodeResponses[keyof GetReferralCodeResponses];
+
+export type UpdateReferralCodeData = {
+  body: {
+    label?: string;
+    active?: boolean;
+    utm?: ReferralCodeUtm;
+  };
+  path: {
+    /**
+     * The referral code id (`ref_…`).
+     */
+    id: string;
+  };
+  query?: never;
+  url: "/referral_codes/{id}";
+};
+
+export type UpdateReferralCodeErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+  /**
+   * `quota_exceeded`, `reserved_utm_prefix`, or `validation_error`.
+   */
+  422: Error;
+};
+
+export type UpdateReferralCodeError =
+  UpdateReferralCodeErrors[keyof UpdateReferralCodeErrors];
+
+export type UpdateReferralCodeResponses = {
+  /**
+   * The updated referral code
+   */
+  200: ReferralCodeEnvelope;
+};
+
+export type UpdateReferralCodeResponse =
+  UpdateReferralCodeResponses[keyof UpdateReferralCodeResponses];
+
+export type GetReferralCodeStatsData = {
+  body?: never;
+  path: {
+    /**
+     * The referral code id (`ref_…`).
+     */
+    id: string;
+  };
+  query?: {
+    /**
+     * Cursor-based pagination token. Use the `next_cursor` value from the previous response's
+     * `meta` object to retrieve the next page of results. Omit this parameter to retrieve the
+     * first page.
+     *
+     */
+    cursor?: number;
+    /**
+     * Only this company (`co_…`). Use it with `investments_cursor` to page an installed company's rows.
+     */
+    company_id?: string;
+    /**
+     * With `company_id`, the `investments_next_cursor` from the previous page of that company's rows.
+     */
+    investments_cursor?: number;
+    per_page?: number;
+  };
+  url: "/referral_codes/{id}/stats";
+};
+
+export type GetReferralCodeStatsErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+};
+
+export type GetReferralCodeStatsError =
+  GetReferralCodeStatsErrors[keyof GetReferralCodeStatsErrors];
+
+export type GetReferralCodeStatsResponses = {
+  /**
+   * Stats for the referral code
+   */
+  200: ReferralCodeStatsEnvelope;
+};
+
+export type GetReferralCodeStatsResponse =
+  GetReferralCodeStatsResponses[keyof GetReferralCodeStatsResponses];
 
 export type ListInstallationsData = {
   body?: never;
@@ -7393,6 +7391,16 @@ export type CreateWebhookEndpointData = {
      */
     url: string;
     /**
+     * Bind the endpoint to one active installation of your app (`inst_…`) instead of
+     * creating an app-wide endpoint. An unknown or revoked id is 404. An installation token
+     * may omit this (it always binds to its own installation); a user token may bind only to
+     * an installation its holder has a role on at or above the installation's granted tier.
+     * Bound endpoints are live-only, capped at 5 per installation, idempotent on
+     * (installation, url, mode), and their `url` is returned only in this response.
+     *
+     */
+    installation?: string;
+    /**
      * Event names to subscribe to (from the event catalog). At least one.
      */
     events: Array<
@@ -7417,6 +7425,18 @@ export type CreateWebhookEndpointData = {
       | "syndicate_member.applied"
       | "syndicate_member.approved"
       | "syndicate_member.joined"
+      | "syndicate_member.left"
+      | "syndicate_member.declined"
+      | "join_session.pending_approval"
+      | "join_session.completed"
+      | "join_session.rejected"
+      | "join_session.ineligible"
+      | "join_session.canceled"
+      | "join_session.expired"
+      | "installation.created"
+      | "installation.revoked"
+      | "investment.referred"
+      | "referral_cohorts.published"
     >;
     mode?: "live" | "test";
   };
@@ -7606,6 +7626,18 @@ export type UpdateWebhookEndpointData = {
       | "syndicate_member.applied"
       | "syndicate_member.approved"
       | "syndicate_member.joined"
+      | "syndicate_member.left"
+      | "syndicate_member.declined"
+      | "join_session.pending_approval"
+      | "join_session.completed"
+      | "join_session.rejected"
+      | "join_session.ineligible"
+      | "join_session.canceled"
+      | "join_session.expired"
+      | "installation.created"
+      | "installation.revoked"
+      | "investment.referred"
+      | "referral_cohorts.published"
     >;
   };
   path: {
@@ -7798,7 +7830,19 @@ export type TestWebhookEndpointData = {
       | "syndicate_member.reinvited"
       | "syndicate_member.applied"
       | "syndicate_member.approved"
-      | "syndicate_member.joined";
+      | "syndicate_member.joined"
+      | "syndicate_member.left"
+      | "syndicate_member.declined"
+      | "join_session.pending_approval"
+      | "join_session.completed"
+      | "join_session.rejected"
+      | "join_session.ineligible"
+      | "join_session.canceled"
+      | "join_session.expired"
+      | "installation.created"
+      | "installation.revoked"
+      | "investment.referred"
+      | "referral_cohorts.published";
   };
   path: {
     /**
@@ -7866,19 +7910,27 @@ export type TestWebhookEndpointResponses = {
 export type TestWebhookEndpointResponse =
   TestWebhookEndpointResponses[keyof TestWebhookEndpointResponses];
 
-export type ListWebhookSubscriptionsData = {
+export type ListOfferingMemberLinksData = {
   body?: never;
   path: {
     /**
-     * The fundraise/campaign ID
+     * The offering ID (prefixed, e.g. `ofr_abc123`), on the syndicate or company your app is installed on.
      */
-    campaign_id: number;
+    id: string;
   };
-  query?: never;
-  url: "/campaigns/{campaign_id}/attribution/webhooks";
+  query?: {
+    /**
+     * Cursor-based pagination token. Use the `next_cursor` value from the previous response's
+     * `meta` object to retrieve the next page of results. Omit this parameter to retrieve the
+     * first page.
+     *
+     */
+    cursor?: number;
+  };
+  url: "/offerings/{id}/member_links";
 };
 
-export type ListWebhookSubscriptionsErrors = {
+export type ListOfferingMemberLinksErrors = {
   /**
    * Authentication required or token is invalid/expired. This error occurs when:
    * - No Authorization header is provided
@@ -7901,45 +7953,50 @@ export type ListWebhookSubscriptionsErrors = {
    *
    */
   403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
 };
 
-export type ListWebhookSubscriptionsError =
-  ListWebhookSubscriptionsErrors[keyof ListWebhookSubscriptionsErrors];
+export type ListOfferingMemberLinksError =
+  ListOfferingMemberLinksErrors[keyof ListOfferingMemberLinksErrors];
 
-export type ListWebhookSubscriptionsResponses = {
+export type ListOfferingMemberLinksResponses = {
   /**
    * Successful response
    */
-  200: WebhookSubscriptionListEnvelope;
+  200: MemberLinkListEnvelope;
 };
 
-export type ListWebhookSubscriptionsResponse =
-  ListWebhookSubscriptionsResponses[keyof ListWebhookSubscriptionsResponses];
+export type ListOfferingMemberLinksResponse =
+  ListOfferingMemberLinksResponses[keyof ListOfferingMemberLinksResponses];
 
-export type CreateWebhookSubscriptionData = {
-  body: {
+export type CreateOfferingMemberLinkData = {
+  body?: {
+    member_link?: MemberLinkCreateInput;
+  };
+  headers?: {
     /**
-     * HTTPS URL to receive webhook POSTs
+     * A unique client-generated key that makes a write request safe to retry. If a request
+     * is retried within 24 hours with the same key and body, the original result is returned
+     * instead of performing the operation again. Strongly recommended on all `POST` requests
+     * that create resources.
+     *
      */
-    target_url: string;
-    /**
-     * Events to subscribe to
-     */
-    events: Array<
-      "investment.applied" | "investment.confirmed" | "investment.canceled"
-    >;
+    "Idempotency-Key"?: string;
   };
   path: {
     /**
-     * The fundraise/campaign ID
+     * The offering ID (prefixed, e.g. `ofr_abc123`), on the syndicate or company your app is installed on.
      */
-    campaign_id: number;
+    id: string;
   };
   query?: never;
-  url: "/campaigns/{campaign_id}/attribution/webhooks";
+  url: "/offerings/{id}/member_links";
 };
 
-export type CreateWebhookSubscriptionErrors = {
+export type CreateOfferingMemberLinkErrors = {
   /**
    * Authentication required or token is invalid/expired. This error occurs when:
    * - No Authorization header is provided
@@ -7963,41 +8020,51 @@ export type CreateWebhookSubscriptionErrors = {
    */
   403: Error;
   /**
-   * Validation error (invalid URL, events, or limit reached)
+   * The requested resource does not exist or is not visible to this token.
    */
-  422: Error;
-};
-
-export type CreateWebhookSubscriptionError =
-  CreateWebhookSubscriptionErrors[keyof CreateWebhookSubscriptionErrors];
-
-export type CreateWebhookSubscriptionResponses = {
+  404: Error;
   /**
-   * Subscription created
+   * The request conflicts with the resource's current state (for example, opening an
+   * SPV that is already open, or closing one that is not yet open).
+   *
    */
-  201: WebhookSubscriptionWithSecretEnvelope;
+  409: Error;
+  /**
+   * One or more request fields failed validation.
+   */
+  422: ValidationError;
 };
 
-export type CreateWebhookSubscriptionResponse =
-  CreateWebhookSubscriptionResponses[keyof CreateWebhookSubscriptionResponses];
+export type CreateOfferingMemberLinkError =
+  CreateOfferingMemberLinkErrors[keyof CreateOfferingMemberLinkErrors];
 
-export type DeleteWebhookSubscriptionData = {
+export type CreateOfferingMemberLinkResponses = {
+  /**
+   * The live link for a repeated `reference`, or an `Idempotency-Key` replay
+   */
+  200: MemberLinkEnvelope;
+  /**
+   * Member link created
+   */
+  201: MemberLinkEnvelope;
+};
+
+export type CreateOfferingMemberLinkResponse =
+  CreateOfferingMemberLinkResponses[keyof CreateOfferingMemberLinkResponses];
+
+export type GetMemberLinkData = {
   body?: never;
   path: {
     /**
-     * The fundraise/campaign ID
+     * The member link ID (prefixed, e.g. `il_abc123`). Opaque; do not parse it.
      */
-    campaign_id: number;
-    /**
-     * The webhook subscription ID
-     */
-    webhook_id: number;
+    id: string;
   };
   query?: never;
-  url: "/campaigns/{campaign_id}/attribution/webhooks/{webhook_id}";
+  url: "/member_links/{id}";
 };
 
-export type DeleteWebhookSubscriptionErrors = {
+export type GetMemberLinkErrors = {
   /**
    * Authentication required or token is invalid/expired. This error occurs when:
    * - No Authorization header is provided
@@ -8021,99 +8088,36 @@ export type DeleteWebhookSubscriptionErrors = {
    */
   403: Error;
   /**
-   * Subscription not found
+   * The requested resource does not exist or is not visible to this token.
    */
   404: Error;
 };
 
-export type DeleteWebhookSubscriptionError =
-  DeleteWebhookSubscriptionErrors[keyof DeleteWebhookSubscriptionErrors];
+export type GetMemberLinkError = GetMemberLinkErrors[keyof GetMemberLinkErrors];
 
-export type DeleteWebhookSubscriptionResponses = {
-  /**
-   * Subscription deleted
-   */
-  204: void;
-};
-
-export type DeleteWebhookSubscriptionResponse =
-  DeleteWebhookSubscriptionResponses[keyof DeleteWebhookSubscriptionResponses];
-
-export type GetWebhookSubscriptionData = {
-  body?: never;
-  path: {
-    /**
-     * The fundraise/campaign ID
-     */
-    campaign_id: number;
-    /**
-     * The webhook subscription ID
-     */
-    webhook_id: number;
-  };
-  query?: never;
-  url: "/campaigns/{campaign_id}/attribution/webhooks/{webhook_id}";
-};
-
-export type GetWebhookSubscriptionErrors = {
-  /**
-   * Authentication required or token is invalid/expired. This error occurs when:
-   * - No Authorization header is provided
-   * - The access token is invalid or malformed
-   * - The access token has expired
-   * - The access token has been revoked
-   *
-   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
-   *
-   */
-  401: Error;
-  /**
-   * The authenticated user does not have permission to access this resource.
-   * This typically means:
-   * - The user is authenticated but lacks the required OAuth scope
-   * - The resource belongs to a different user
-   * - The user's role doesn't allow this operation
-   *
-   * Check that your OAuth token includes the necessary scopes for this endpoint.
-   *
-   */
-  403: Error;
-  /**
-   * Subscription not found
-   */
-  404: Error;
-};
-
-export type GetWebhookSubscriptionError =
-  GetWebhookSubscriptionErrors[keyof GetWebhookSubscriptionErrors];
-
-export type GetWebhookSubscriptionResponses = {
+export type GetMemberLinkResponses = {
   /**
    * Successful response
    */
-  200: WebhookSubscriptionWithRecentDeliveriesEnvelope;
+  200: MemberLinkEnvelope;
 };
 
-export type GetWebhookSubscriptionResponse =
-  GetWebhookSubscriptionResponses[keyof GetWebhookSubscriptionResponses];
+export type GetMemberLinkResponse =
+  GetMemberLinkResponses[keyof GetMemberLinkResponses];
 
-export type TestWebhookSubscriptionData = {
+export type CancelMemberLinkData = {
   body?: never;
   path: {
     /**
-     * The fundraise/campaign ID
+     * The member link ID (prefixed, e.g. `il_abc123`). Opaque; do not parse it.
      */
-    campaign_id: number;
-    /**
-     * The webhook subscription ID
-     */
-    webhook_id: number;
+    id: string;
   };
   query?: never;
-  url: "/campaigns/{campaign_id}/attribution/webhooks/{webhook_id}/test";
+  url: "/member_links/{id}/cancel";
 };
 
-export type TestWebhookSubscriptionErrors = {
+export type CancelMemberLinkErrors = {
   /**
    * Authentication required or token is invalid/expired. This error occurs when:
    * - No Authorization header is provided
@@ -8137,396 +8141,20 @@ export type TestWebhookSubscriptionErrors = {
    */
   403: Error;
   /**
-   * Subscription not found
-   */
-  404: Error;
-  /**
-   * Subscription is inactive
-   */
-  422: Error;
-};
-
-export type TestWebhookSubscriptionError =
-  TestWebhookSubscriptionErrors[keyof TestWebhookSubscriptionErrors];
-
-export type TestWebhookSubscriptionResponses = {
-  /**
-   * Test webhook queued
-   */
-  200: WebhookTestResultEnvelope;
-};
-
-export type TestWebhookSubscriptionResponse =
-  TestWebhookSubscriptionResponses[keyof TestWebhookSubscriptionResponses];
-
-export type RegenerateWebhookSecretData = {
-  body?: never;
-  path: {
-    /**
-     * The fundraise/campaign ID
-     */
-    campaign_id: number;
-    /**
-     * The webhook subscription ID
-     */
-    webhook_id: number;
-  };
-  query?: never;
-  url: "/campaigns/{campaign_id}/attribution/webhooks/{webhook_id}/regenerate_secret";
-};
-
-export type RegenerateWebhookSecretErrors = {
-  /**
-   * Authentication required or token is invalid/expired. This error occurs when:
-   * - No Authorization header is provided
-   * - The access token is invalid or malformed
-   * - The access token has expired
-   * - The access token has been revoked
-   *
-   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
-   *
-   */
-  401: Error;
-  /**
-   * The authenticated user does not have permission to access this resource.
-   * This typically means:
-   * - The user is authenticated but lacks the required OAuth scope
-   * - The resource belongs to a different user
-   * - The user's role doesn't allow this operation
-   *
-   * Check that your OAuth token includes the necessary scopes for this endpoint.
-   *
-   */
-  403: Error;
-  /**
-   * Subscription not found
+   * The requested resource does not exist or is not visible to this token.
    */
   404: Error;
 };
 
-export type RegenerateWebhookSecretError =
-  RegenerateWebhookSecretErrors[keyof RegenerateWebhookSecretErrors];
+export type CancelMemberLinkError =
+  CancelMemberLinkErrors[keyof CancelMemberLinkErrors];
 
-export type RegenerateWebhookSecretResponses = {
+export type CancelMemberLinkResponses = {
   /**
-   * Secret regenerated
+   * The canceled member link
    */
-  200: WebhookSubscriptionWithSecret2Envelope;
+  200: MemberLinkEnvelope;
 };
 
-export type RegenerateWebhookSecretResponse =
-  RegenerateWebhookSecretResponses[keyof RegenerateWebhookSecretResponses];
-
-export type ReactivateWebhookSubscriptionData = {
-  body?: never;
-  path: {
-    /**
-     * The fundraise/campaign ID
-     */
-    campaign_id: number;
-    /**
-     * The webhook subscription ID
-     */
-    webhook_id: number;
-  };
-  query?: never;
-  url: "/campaigns/{campaign_id}/attribution/webhooks/{webhook_id}/reactivate";
-};
-
-export type ReactivateWebhookSubscriptionErrors = {
-  /**
-   * Authentication required or token is invalid/expired. This error occurs when:
-   * - No Authorization header is provided
-   * - The access token is invalid or malformed
-   * - The access token has expired
-   * - The access token has been revoked
-   *
-   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
-   *
-   */
-  401: Error;
-  /**
-   * The authenticated user does not have permission to access this resource.
-   * This typically means:
-   * - The user is authenticated but lacks the required OAuth scope
-   * - The resource belongs to a different user
-   * - The user's role doesn't allow this operation
-   *
-   * Check that your OAuth token includes the necessary scopes for this endpoint.
-   *
-   */
-  403: Error;
-  /**
-   * Subscription not found
-   */
-  404: Error;
-  /**
-   * Webhook is already active
-   */
-  422: Error;
-};
-
-export type ReactivateWebhookSubscriptionError =
-  ReactivateWebhookSubscriptionErrors[keyof ReactivateWebhookSubscriptionErrors];
-
-export type ReactivateWebhookSubscriptionResponses = {
-  /**
-   * Webhook reactivated
-   */
-  200: WebhookSubscriptionEnvelope;
-};
-
-export type ReactivateWebhookSubscriptionResponse =
-  ReactivateWebhookSubscriptionResponses[keyof ReactivateWebhookSubscriptionResponses];
-
-export type GetAttributionMeData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/attribution/me";
-};
-
-export type GetAttributionMeErrors = {
-  /**
-   * Authentication required or token is invalid/expired. This error occurs when:
-   * - No Authorization header is provided
-   * - The access token is invalid or malformed
-   * - The access token has expired
-   * - The access token has been revoked
-   *
-   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
-   *
-   */
-  401: Error;
-};
-
-export type GetAttributionMeError =
-  GetAttributionMeErrors[keyof GetAttributionMeErrors];
-
-export type GetAttributionMeResponses = {
-  /**
-   * Successful response
-   */
-  200: AttributionMeEnvelope;
-};
-
-export type GetAttributionMeResponse =
-  GetAttributionMeResponses[keyof GetAttributionMeResponses];
-
-export type ListAttributionCampaignsData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/attribution/campaigns";
-};
-
-export type ListAttributionCampaignsErrors = {
-  /**
-   * Authentication required or token is invalid/expired. This error occurs when:
-   * - No Authorization header is provided
-   * - The access token is invalid or malformed
-   * - The access token has expired
-   * - The access token has been revoked
-   *
-   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
-   *
-   */
-  401: Error;
-};
-
-export type ListAttributionCampaignsError =
-  ListAttributionCampaignsErrors[keyof ListAttributionCampaignsErrors];
-
-export type ListAttributionCampaignsResponses = {
-  /**
-   * Successful response
-   */
-  200: AttributionCampaignSummaryListEnvelope;
-};
-
-export type ListAttributionCampaignsResponse =
-  ListAttributionCampaignsResponses[keyof ListAttributionCampaignsResponses];
-
-export type RegisterAsPartnerData = {
-  body: {
-    /**
-     * Name of the marketing/agency company
-     */
-    company_name: string;
-    /**
-     * Company website URL
-     */
-    website?: string;
-  };
-  path?: never;
-  query?: never;
-  url: "/attribution/partners/register";
-};
-
-export type RegisterAsPartnerErrors = {
-  /**
-   * Authentication required or token is invalid/expired. This error occurs when:
-   * - No Authorization header is provided
-   * - The access token is invalid or malformed
-   * - The access token has expired
-   * - The access token has been revoked
-   *
-   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
-   *
-   */
-  401: Error;
-  /**
-   * Already registered or validation error
-   */
-  422: Error;
-};
-
-export type RegisterAsPartnerError =
-  RegisterAsPartnerErrors[keyof RegisterAsPartnerErrors];
-
-export type RegisterAsPartnerResponses = {
-  /**
-   * Partner registered
-   */
-  201: MarketingPartnerEnvelope;
-};
-
-export type RegisterAsPartnerResponse =
-  RegisterAsPartnerResponses[keyof RegisterAsPartnerResponses];
-
-export type ListPartnerInvitesData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/attribution/invites";
-};
-
-export type ListPartnerInvitesErrors = {
-  /**
-   * Authentication required or token is invalid/expired. This error occurs when:
-   * - No Authorization header is provided
-   * - The access token is invalid or malformed
-   * - The access token has expired
-   * - The access token has been revoked
-   *
-   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
-   *
-   */
-  401: Error;
-};
-
-export type ListPartnerInvitesError =
-  ListPartnerInvitesErrors[keyof ListPartnerInvitesErrors];
-
-export type ListPartnerInvitesResponses = {
-  /**
-   * Successful response
-   */
-  200: PartnerInviteListEnvelope;
-};
-
-export type ListPartnerInvitesResponse =
-  ListPartnerInvitesResponses[keyof ListPartnerInvitesResponses];
-
-export type CreatePartnerInviteData = {
-  body: {
-    direction: "partner_to_founder" | "founder_to_partner";
-    /**
-     * Required for founder_to_partner direction
-     */
-    company_id?: number;
-    /**
-     * Required for founder_to_partner direction
-     */
-    partner_email?: string;
-    /**
-     * 1=anonymized (default), 2=detailed (future)
-     */
-    access_level?: number;
-  };
-  path?: never;
-  query?: never;
-  url: "/attribution/invites";
-};
-
-export type CreatePartnerInviteErrors = {
-  /**
-   * Authentication required or token is invalid/expired. This error occurs when:
-   * - No Authorization header is provided
-   * - The access token is invalid or malformed
-   * - The access token has expired
-   * - The access token has been revoked
-   *
-   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
-   *
-   */
-  401: Error;
-  /**
-   * Not authorized to create this invite
-   */
-  403: Error;
-  /**
-   * Validation error
-   */
-  422: Error;
-};
-
-export type CreatePartnerInviteError =
-  CreatePartnerInviteErrors[keyof CreatePartnerInviteErrors];
-
-export type CreatePartnerInviteResponses = {
-  /**
-   * Invite created
-   */
-  201: PartnerInviteEnvelope;
-};
-
-export type CreatePartnerInviteResponse =
-  CreatePartnerInviteResponses[keyof CreatePartnerInviteResponses];
-
-export type RevokePartnerInviteData = {
-  body?: never;
-  path: {
-    /**
-     * The invite token
-     */
-    token: string;
-  };
-  query?: never;
-  url: "/attribution/invites/{token}";
-};
-
-export type RevokePartnerInviteErrors = {
-  /**
-   * Authentication required or token is invalid/expired. This error occurs when:
-   * - No Authorization header is provided
-   * - The access token is invalid or malformed
-   * - The access token has expired
-   * - The access token has been revoked
-   *
-   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
-   *
-   */
-  401: Error;
-  /**
-   * Not authorized to revoke this invite
-   */
-  403: Error;
-  /**
-   * Invite not found
-   */
-  404: Error;
-};
-
-export type RevokePartnerInviteError =
-  RevokePartnerInviteErrors[keyof RevokePartnerInviteErrors];
-
-export type RevokePartnerInviteResponses = {
-  /**
-   * Invite revoked
-   */
-  204: void;
-};
-
-export type RevokePartnerInviteResponse =
-  RevokePartnerInviteResponses[keyof RevokePartnerInviteResponses];
+export type CancelMemberLinkResponse =
+  CancelMemberLinkResponses[keyof CancelMemberLinkResponses];

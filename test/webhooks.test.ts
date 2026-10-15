@@ -411,3 +411,26 @@ describe("legacy attribution scheme (X-Wefunder-Signature: sha256=… + X-Wefund
     ).toThrow(WebhookSignatureError);
   });
 });
+
+describe("2026-10-15 catalog additions are typed", () => {
+  const ts = 1_700_000_000;
+  const now = () => ts * 1000;
+  const verify = (data: Record<string, unknown>, event: string) => {
+    const payload = JSON.stringify({ id: "evt_n", event, created_at: "2026-10-15T00:00:00Z", mode: "live", data });
+    return constructEvent(payload, signWebhook({ payload, secret: SECRET, timestamp: ts }), SECRET, { now });
+  };
+  it("installation.revoked, join_session.ineligible, investment.referred and referral_cohorts.published narrow on `event`", () => {
+    const revoked = verify({ id: "inst_1", status: "revoked", target: { type: "company", id: "co_1", name: "Acme" }, tier: "editor", scopes: ["read:investments"], installed_at: "2026-10-01T00:00:00Z", installed_by: { role: "founder" }, revoked_at: "2026-10-15T00:00:00Z", revoked_by: { role: "founder" }, occurred_at: "2026-10-15T00:00:00.000000Z" }, "installation.revoked");
+    if (revoked.event === "installation.revoked") expect(revoked.data.revoked_by?.role).toBe("founder");
+    else throw new Error("not narrowed");
+    const inel = verify({ id: "jss_1", syndicate: "syn_1", status: "ineligible", ineligible_reason: "jurisdiction", user: { id: "usr_1", name: "A" }, theme: { id: null, version: null, override_fingerprint: null }, occurred_at: "x" }, "join_session.ineligible");
+    if (inel.event === "join_session.ineligible") expect(inel.data.ineligible_reason).toBe("jurisdiction");
+    else throw new Error("not narrowed");
+    const ref = verify({ referral_code: "ref_1", company: "co_1", investment: "opq_i", investor: "opq_u", week: "2026-W42", amount_tier: "1k_to_5k", status: "active", time_to_invest: "same_day" }, "investment.referred");
+    if (ref.event === "investment.referred") expect(ref.data.week).toBe("2026-W42");
+    else throw new Error("not narrowed");
+    const pub = verify({ week: "2026-W42", published_at: "2026-10-19T00:05:00Z" }, "referral_cohorts.published");
+    if (pub.event === "referral_cohorts.published") expect(pub.data.published_at).toMatch(/^2026/);
+    else throw new Error("not narrowed");
+  });
+});

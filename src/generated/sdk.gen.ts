@@ -12,9 +12,9 @@ import type {
   ApproveSyndicateMemberData,
   ApproveSyndicateMemberErrors,
   ApproveSyndicateMemberResponses,
-  CloseSyndicateDealData,
-  CloseSyndicateDealErrors,
-  CloseSyndicateDealResponses,
+  CancelMemberLinkData,
+  CancelMemberLinkErrors,
+  CancelMemberLinkResponses,
   CreateInstallationData,
   CreateInstallationErrors,
   CreateInstallationResponses,
@@ -24,39 +24,27 @@ import type {
   CreateIntentData,
   CreateIntentErrors,
   CreateIntentResponses,
-  CreatePartnerInviteData,
-  CreatePartnerInviteErrors,
-  CreatePartnerInviteResponses,
+  CreateOfferingMemberLinkData,
+  CreateOfferingMemberLinkErrors,
+  CreateOfferingMemberLinkResponses,
+  CreateReferralCodeData,
+  CreateReferralCodeErrors,
+  CreateReferralCodeResponses,
   CreateWebhookEndpointData,
   CreateWebhookEndpointErrors,
   CreateWebhookEndpointResponses,
-  CreateWebhookSubscriptionData,
-  CreateWebhookSubscriptionErrors,
-  CreateWebhookSubscriptionResponses,
   DeleteWebhookEndpointData,
   DeleteWebhookEndpointErrors,
   DeleteWebhookEndpointResponses,
-  DeleteWebhookSubscriptionData,
-  DeleteWebhookSubscriptionErrors,
-  DeleteWebhookSubscriptionResponses,
   DemoteSyndicateMemberData,
   DemoteSyndicateMemberErrors,
   DemoteSyndicateMemberResponses,
   ExportSyndicateMembersCsvData,
   ExportSyndicateMembersCsvErrors,
   ExportSyndicateMembersCsvResponses,
-  FinalizeSyndicateDealData,
-  FinalizeSyndicateDealErrors,
-  FinalizeSyndicateDealResponses,
   FollowCompanyData,
   FollowCompanyErrors,
   FollowCompanyResponses,
-  GetAttributionMeData,
-  GetAttributionMeErrors,
-  GetAttributionMeResponses,
-  GetAttributionStatsData,
-  GetAttributionStatsErrors,
-  GetAttributionStatsResponses,
   GetCompanyData,
   GetCompanyDisclosuresData,
   GetCompanyDisclosuresErrors,
@@ -81,6 +69,9 @@ import type {
   GetInvestmentData,
   GetInvestmentErrors,
   GetInvestmentResponses,
+  GetMemberLinkData,
+  GetMemberLinkErrors,
+  GetMemberLinkResponses,
   GetOfferingData,
   GetOfferingErrors,
   GetOfferingResponses,
@@ -90,6 +81,12 @@ import type {
   GetPortfolioData,
   GetPortfolioErrors,
   GetPortfolioResponses,
+  GetReferralCodeData,
+  GetReferralCodeErrors,
+  GetReferralCodeResponses,
+  GetReferralCodeStatsData,
+  GetReferralCodeStatsErrors,
+  GetReferralCodeStatsResponses,
   GetSyndicateData,
   GetSyndicateDealData,
   GetSyndicateDealErrors,
@@ -105,24 +102,12 @@ import type {
   GetWebhookEndpointData,
   GetWebhookEndpointErrors,
   GetWebhookEndpointResponses,
-  GetWebhookSubscriptionData,
-  GetWebhookSubscriptionErrors,
-  GetWebhookSubscriptionResponses,
   HideSyndicateMemberData,
   HideSyndicateMemberErrors,
   HideSyndicateMemberResponses,
   InviteSyndicateMemberData,
   InviteSyndicateMemberErrors,
   InviteSyndicateMemberResponses,
-  ListActivityData,
-  ListActivityErrors,
-  ListActivityResponses,
-  ListAttributedInvestmentsData,
-  ListAttributedInvestmentsErrors,
-  ListAttributedInvestmentsResponses,
-  ListAttributionCampaignsData,
-  ListAttributionCampaignsErrors,
-  ListAttributionCampaignsResponses,
   ListCampaignsData,
   ListCampaignsErrors,
   ListCampaignsResponses,
@@ -156,15 +141,18 @@ import type {
   ListMyCompaniesData,
   ListMyCompaniesErrors,
   ListMyCompaniesResponses,
+  ListOfferingMemberLinksData,
+  ListOfferingMemberLinksErrors,
+  ListOfferingMemberLinksResponses,
   ListOfferingsData,
   ListOfferingsErrors,
   ListOfferingsResponses,
-  ListPartnerInvitesData,
-  ListPartnerInvitesErrors,
-  ListPartnerInvitesResponses,
   ListPortfolioPositionsData,
   ListPortfolioPositionsErrors,
   ListPortfolioPositionsResponses,
+  ListReferralCodesData,
+  ListReferralCodesErrors,
+  ListReferralCodesResponses,
   ListSyndicateDealInvestorsData,
   ListSyndicateDealInvestorsErrors,
   ListSyndicateDealInvestorsResponses,
@@ -186,27 +174,15 @@ import type {
   ListWebhookEndpointsData,
   ListWebhookEndpointsErrors,
   ListWebhookEndpointsResponses,
-  ListWebhookSubscriptionsData,
-  ListWebhookSubscriptionsErrors,
-  ListWebhookSubscriptionsResponses,
   PreviewIntentData,
   PreviewIntentErrors,
   PreviewIntentResponses,
   PromoteSyndicateMemberData,
   PromoteSyndicateMemberErrors,
   PromoteSyndicateMemberResponses,
-  ReactivateWebhookSubscriptionData,
-  ReactivateWebhookSubscriptionErrors,
-  ReactivateWebhookSubscriptionResponses,
   ReenableWebhookEndpointData,
   ReenableWebhookEndpointErrors,
   ReenableWebhookEndpointResponses,
-  RegenerateWebhookSecretData,
-  RegenerateWebhookSecretErrors,
-  RegenerateWebhookSecretResponses,
-  RegisterAsPartnerData,
-  RegisterAsPartnerErrors,
-  RegisterAsPartnerResponses,
   RemoveSyndicateMemberData,
   RemoveSyndicateMemberErrors,
   ReorderSyndicateMembersData,
@@ -224,9 +200,6 @@ import type {
   RevokeInstallationData,
   RevokeInstallationErrors,
   RevokeInstallationResponses,
-  RevokePartnerInviteData,
-  RevokePartnerInviteErrors,
-  RevokePartnerInviteResponses,
   RotateWebhookEndpointSecretData,
   RotateWebhookEndpointSecretErrors,
   RotateWebhookEndpointSecretResponses,
@@ -236,12 +209,12 @@ import type {
   TestWebhookEndpointData,
   TestWebhookEndpointErrors,
   TestWebhookEndpointResponses,
-  TestWebhookSubscriptionData,
-  TestWebhookSubscriptionErrors,
-  TestWebhookSubscriptionResponses,
   UnfollowCompanyData,
   UnfollowCompanyErrors,
   UnfollowCompanyResponses,
+  UpdateReferralCodeData,
+  UpdateReferralCodeErrors,
+  UpdateReferralCodeResponses,
   UpdateSyndicateData,
   UpdateSyndicateErrors,
   UpdateSyndicateMemberData,
@@ -293,8 +266,17 @@ export type Options<
  * never hold `read:explore`; a token with `read:explore` but no resolvable user gets the
  * public view.
  *
- * Order with `sort` (default: most raised); paginate with `cursor`. `meta.total_count` is
- * the number of offerings across all pages, after filters.
+ * Order with `sort` (default: most raised); paginate with `cursor` and `per_page`.
+ * `meta.total_count` is the number of offerings across all pages, after filters.
+ *
+ * **Closed rounds (`status`).** By default the list is live rounds. `status=closed` lists
+ * rounds that finished raising instead, newest `closed_at` first. It is not limited to one
+ * per company or to the curated explore set: it covers every finished round that
+ * `GET /offerings/{id}` serves to a logged-out visitor, for companies listed in Wefunder's
+ * public directory. `status=all` returns the live list first, then the closed list. With
+ * `status=closed` or `status=all`, `exemption` is the only filter accepted, and `sort`
+ * orders only the live part. Closed rounds follow the public view even for a
+ * `read:explore` token.
  *
  * **Filters** are objective, per-offering terms — exemption family, security type,
  * TTW vs. live, minimum investment ceiling, close date, amount raised floor. The response
@@ -304,6 +286,7 @@ export type Options<
  * Use this endpoint to:
  * - Discover and monitor active deals
  * - Build deal aggregators and public listings
+ * - Bulk-list closed rounds (`status=closed`)
  *
  */
 export const listOfferings = <ThrowOnError extends boolean = false>(
@@ -366,8 +349,14 @@ export const getOffering = <ThrowOnError extends boolean = false>(
  * no details tab on the site and answers `404` with `error.type: no_disclosures` — distinct
  * from an unknown or hidden company. A section the company hides on the site is `null`.
  *
- * Money is USD as decimal strings; ratios are percentages as decimal strings. Everything here
- * is the issuer's own disclosure, served as filed, not a Wefunder assessment.
+ * Money is decimal strings, never USD by assumption: the round's own figures (use of funds,
+ * prior offerings, notes, debts, related parties) are in `currency` — `EUR` for an ECSP round —
+ * while the Form C financial statements, the ratio derived from them, and the current-position
+ * figures (which repeat it as `current_position.currency`) are in `financials_currency`, the
+ * currency the issuer declared for its statements (it can differ from
+ * the round's: DKK, RON, GBP, or USD statements behind a EUR round). Ratios are percentages as
+ * decimal strings. Everything here is the issuer's own disclosure, served as filed, not a
+ * Wefunder assessment.
  *
  */
 export const getCompanyDisclosures = <ThrowOnError extends boolean = false>(
@@ -557,7 +546,7 @@ export const searchCompanies = <ThrowOnError extends boolean = false>(
  * Get a company page
  *
  * The company page behind an offering, as structured data — the "click a company" step after
- * `/explore`. Addressed by the `co_...` id every offering carries in `company.id`.
+ * `/explore`. Addressed by the `co_...` id every offering carries in its top-level `company` field (a bare string).
  *
  * Keeps apart the three raised numbers the page shows and readers conflate:
  * `current_raise.amount_raised` (this campaign's live rounds combined, on Wefunder),
@@ -601,6 +590,18 @@ export const getCompany = <ThrowOnError extends boolean = false>(
  * - Check user account status and permissions
  *
  * The response includes the user's unique ID which can be used to reference the user in other API calls.
+ *
+ * Two shapes, depending on the token:
+ *
+ * - **With `read:profile`** (or `write:profile`): the full profile shown in the example.
+ * - **Any other user token**: only the user's id and type,
+ * `{"data": {"id": "usr_...", "type": "user"}}`, with no `attributes`. Use it to learn
+ * whose token you hold; it never includes the email, name, username or city.
+ *
+ * A token with no user (a server-side `client_credentials` key, or an installation acting
+ * as a company or syndicate) gets `403`. Before this change a user token without
+ * `read:profile` got `403` here too; code that read `attributes` unconditionally should
+ * now check for it.
  *
  */
 export const getCurrentUser = <ThrowOnError extends boolean = false>(
@@ -651,7 +652,25 @@ export const listMyCompanies = <ThrowOnError extends boolean = false>(
  * The authenticated user's watchlist — the companies they follow on wefunder.com (the same
  * rows the site's Follow button writes), newest first. Each entry is in the search-result
  * shape (`co_` id, name, tagline, URL, logo, `raising`, `profile_available`) plus
- * `followed_at`. The list owner sees every company they follow.
+ * `followed_at`.
+ *
+ * Accepts `read:profile` or `write:follows`. Both include `read:profile:follows`, the
+ * follows list on its own, which is what this endpoint checks. A token holding only
+ * `write:follows` can list its follows here but cannot read the profile (`GET /users/me`).
+ *
+ * Which companies are listed depends on the grant, the same way the follow list on a
+ * user's public Wefunder profile does:
+ *
+ * - **`write:follows`, `read:mcp`** (or the retired `read:follows`): the full list, every
+ * company the user follows. An app that follows and unfollows for the user, or the user's
+ * own AI assistant acting as them, sees what the user sees.
+ * - **`read:profile` or `write:profile` without one of those**: the public list. A company that has asked not to be promoted (`promotion_opt_in` false
+ * on `GET /companies/{id}`) is left out, exactly as it is left out of the
+ * profile's follow list for every visitor but the user. This holds for every user,
+ * admins included.
+ *
+ * The filter is applied before paging, so it never shortens a page, and `page_count` counts
+ * the rows returned.
  *
  */
 export const listFollowedCompanies = <ThrowOnError extends boolean = false>(
@@ -731,8 +750,11 @@ export const followCompany = <ThrowOnError extends boolean = false>(
  * ordered by investment. Page with `meta.next_cursor` while `meta.has_more`; the final
  * page's cursor is a sync cursor positioned at the moment the listing started.
  * - **Sync by cursor**: only the records whose published state changed since the cursor,
- * one record per investment, tombstones (`visible: false`, only `id`) included. Apply in
- * `cursor` order; always store `meta.next_cursor`.
+ * one record per investment, tombstones included (`visible: false` with `id`, `observed_at`,
+ * `cursor` and `reason`, and no payload fields). Apply in `cursor` order; always store
+ * `meta.next_cursor`. Filters are not encoded in the cursor: repeat the same `company_id`,
+ * `offering_id` or `investor_id` on every sync request, or the sync widens to the whole
+ * audience.
  * - **Sync by time**: `updated_since=<ISO 8601>` is sugar for a cursor at the ledger position
  * just before that time (with a 60 s safety margin). The response is a normal sync page,
  * so continue with its `meta.next_cursor`.
@@ -816,7 +838,13 @@ export const getOfferingStats = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * Bootstrap or page investment changes for a company
+ * Legacy alias: bootstrap or page investment changes for a company
+ *
+ * **Compatibility alias.** This path keeps working unchanged for partners already on it,
+ * but new integrations should use [List or sync investments](/api-reference/list-investments)
+ * (`GET /investments?company_id=…`): same records, interchangeable cursors. The
+ * [migration notes](/partner-api/investments/changes#migrating-from-companiescompany_idinvestmentschanges)
+ * list the differences.
  *
  * The Investment Delta API: keep a copy of a company's investment records in sync by
  * polling. Call without `cursor` to **bootstrap** (list every current record for the
@@ -842,6 +870,8 @@ export const getOfferingStats = <ThrowOnError extends boolean = false>(
  * `amounts.raised_cents` is the row's contribution to the public raised figure (0 while
  * `needs_whitelisting`); sum it, not `committed_cents`, to match the deal page.
  *
+ *
+ * @deprecated
  */
 export const listCompanyInvestmentChanges = <
   ThrowOnError extends boolean = false,
@@ -904,8 +934,18 @@ export const getPortfolio = <ThrowOnError extends boolean = false>(
  * entity-held stakes each appear separately. Fund and SPV positions identify
  * the companies the vehicle invested in under `holdings`.
  *
- * To compute an average cost per share, divide `cost_basis_cents` by
- * `shares_held`.
+ * Mind the units when deriving an average cost per share: `cost_basis_cents`
+ * is integer cents, while `shares_held`, `current_share_price` and
+ * `terms.share_price` are decimal strings in major units of the position's
+ * `currency`. Use decimal arithmetic and divide the cents by 100 first:
+ * `cost_basis_cents / 100 / shares_held`. For example, `215000` cents over
+ * `"200.0"` shares is 1075 cents per share, or 10.75 USD per share, which is
+ * what to compare with a `current_share_price` of `"14.4632"`. Dividing
+ * `cost_basis_cents` by `shares_held` without the `/ 100` yields cents per
+ * share, 100 times the prices shown. When `shares_held` is `null` or zero (a
+ * non-share security, or a valuation that is not per-share) there is no
+ * average cost per share: report it as unavailable instead of treating the
+ * missing share count as a number.
  *
  * Requires a user-authorized token, like `GET /portfolio`.
  *
@@ -1305,7 +1345,10 @@ export const exportSyndicateMembersCsv = <ThrowOnError extends boolean = false>(
  *
  * Returns the syndicate's **live** deals (open, oversubscribed, or closing) with status,
  * terms, and metrics. Closed and upcoming rounds are not listed; `statistics.total_deals`
- * counts all linked rounds.
+ * counts the same visible deal set in every state. The visible set is every round of the
+ * syndicate's directory companies except invite-only companies' rounds and
+ * testing-the-waters rounds; a syndicate with no directory companies falls back to its
+ * explicitly linked rounds, excluding invite-only companies' rounds only.
  *
  */
 export const listSyndicateDeals = <ThrowOnError extends boolean = false>(
@@ -1353,8 +1396,10 @@ export const getSyndicateDeal = <ThrowOnError extends boolean = false>(
  * Returns syndicate members who invested in this deal. Results are scoped to
  * syndicate member user IDs only and sorted by amount descending.
  *
- * The `user_email` field is **moderator-only** — it returns null for non-moderator
- * callers (i.e., users who are not a manager/operator of the syndicate).
+ * **Manager/operator only.** Who invested how much is moderator data, as on the
+ * web deal pipeline page: an ordinary member, backer, or follower of the syndicate
+ * gets `403`, even with `read:syndicates`. Callers who pass that gate see
+ * `user_email`.
  *
  * `amount` is whole dollars as a string (e.g. `"5000"` is $5,000).
  *
@@ -1416,7 +1461,11 @@ export const listSyndicateMemberInvestments = <
  * total raised, and recent activity.
  *
  * `total_raised` and `total_investors` are computed from directory-selected deals
- * (one per company). `total_deals` and `live_deals` use all linked deals.
+ * (one per directory company: its live round, else its most recent successful round).
+ * `total_deals` counts the syndicate's visible deal set in every state (the rounds
+ * `GET /syndicates/{syndicate_id}/deals` draws from, which excludes invite-only
+ * companies' rounds and testing-the-waters rounds of directory companies);
+ * `live_deals` is the live subset of it, the rows that endpoint lists.
  *
  * `total_raised` is whole dollars as a string.
  *
@@ -1510,68 +1559,17 @@ export const listSyndicatePortfolioPositions = <
   });
 
 /**
- * Close deal
- *
- * Closing a deal is irreversible and requires human approval through the Intent system.
- * This endpoint server-mints a pending `syndicates.close_deal` intent and returns the deal
- * under `data` plus the intent's `review_url` under `meta.close_deal_intent`. The deal is
- * not transitioned until a permitted human approves the intent in the Wefunder UI.
- * Idempotent: a repeated call returns the same pending intent rather than minting a duplicate.
- *
- */
-export const closeSyndicateDeal = <ThrowOnError extends boolean = false>(
-  options: Options<CloseSyndicateDealData, ThrowOnError>,
-): RequestResult<
-  CloseSyndicateDealResponses,
-  CloseSyndicateDealErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    CloseSyndicateDealResponses,
-    CloseSyndicateDealErrors,
-    ThrowOnError
-  >({
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/syndicates/{syndicate_id}/deals/{fundraise_id}/close",
-    ...options,
-  });
-
-/**
- * Finalize deal
- *
- * Finalizing a deal is irreversible and requires human approval through the Intent system.
- * This endpoint server-mints a pending `syndicates.finalize_deal` intent and returns the
- * deal under `data` plus the intent's `review_url` under `meta.finalize_deal_intent`. The
- * finalize runs only when a permitted human approves the intent in the Wefunder UI.
- * Idempotent: a repeated call returns the same pending intent rather than minting a duplicate.
- *
- */
-export const finalizeSyndicateDeal = <ThrowOnError extends boolean = false>(
-  options: Options<FinalizeSyndicateDealData, ThrowOnError>,
-): RequestResult<
-  FinalizeSyndicateDealResponses,
-  FinalizeSyndicateDealErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    FinalizeSyndicateDealResponses,
-    FinalizeSyndicateDealErrors,
-    ThrowOnError
-  >({
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/syndicates/{syndicate_id}/deals/{fundraise_id}/finalize",
-    ...options,
-  });
-
-/**
  * Preview an intent without proposing it
  *
  * Runs every check `POST /intents` runs — the action's feature flag, resource type and id,
  * token binding, who may propose, and the handler's own validation — and returns what the
  * reviewer would read, without minting anything. The draft step for agents: admitted by any
- * proposing scope **or** `read:explore`, and the action's own scope is not required, so a user
- * can shape the text before granting the write permission. Same request body as `POST /intents`
- * (without `idempotency_key`). Errors are the same as `POST /intents` would give.
+ * proposing scope **or** `read:explore`, and the action's own scope is not required on the
+ * token, so a user can shape the text before granting the write permission. The caller must
+ * still be allowed to propose on the resource, and for a syndicate-owned token the application's
+ * Installation scope ceiling still applies (an install granted only `read:syndicates` cannot
+ * preview a `write:syndicates` action: `403 insufficient_scope`). Same request body as
+ * `POST /intents` (without `idempotency_key`). Errors are the same as `POST /intents` would give.
  *
  */
 export const previewIntent = <ThrowOnError extends boolean = false>(
@@ -1638,6 +1636,11 @@ export const listIntents = <ThrowOnError extends boolean = false>(
  * An action still rolling out per account returns 403 `feature_disabled` for a user who is
  * not yet enabled. `POST /intents/preview` runs the same checks without minting.
  *
+ * `syndicates.close_deal` and `syndicates.finalize_deal` were removed in `2026-10-15`: on this
+ * version they answer 400 `bad_request` ("Unknown action") with `details.removed_in_version`.
+ * A syndicate's managers close and finalize deals on wefunder.com. Intents minted before
+ * still appear in `GET /intents` with those action names.
+ *
  * See [Intents documentation](/concepts/intents) for the full pattern.
  *
  */
@@ -1675,26 +1678,6 @@ export const getIntent = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/intents/{intent_id}",
-    ...options,
-  });
-
-/**
- * List activity events
- *
- * Returns actions taken by OAuth apps authorized by the current user.
- * This is the API backing the user-facing activity feed at Settings > Activity.
- *
- */
-export const listActivity = <ThrowOnError extends boolean = false>(
-  options?: Options<ListActivityData, ThrowOnError>,
-): RequestResult<ListActivityResponses, ListActivityErrors, ThrowOnError> =>
-  (options?.client ?? client).get<
-    ListActivityResponses,
-    ListActivityErrors,
-    ThrowOnError
-  >({
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/activity",
     ...options,
   });
 
@@ -1744,74 +1727,155 @@ export const revokeConnectedApp = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * Get aggregate attribution statistics
+ * List referral codes
  *
- * Returns aggregate attribution statistics for a campaign. This is a **Tier 0** endpoint
- * available to all OAuth applications with the `read:attribution:aggregate` scope.
+ * The referral codes your application created, newest first. A referral code records that a
+ * visitor arrived through your link (`?wfr=ref_…`); it never changes what the visitor sees and
+ * grants no access. Filter with `active=true` or `active=false`.
  *
- * Use this endpoint to:
- * - Track overall marketing campaign performance
- * - Measure conversion rates by UTM source/campaign
- * - Monitor investment quality metrics
- * - Build performance dashboards
- *
- * The response includes totals and breakdowns by UTM parameters. All counts exclude
- * disputed attributions.
- *
- * **Privacy**: This endpoint returns aggregate data only. No individual investor
- * information is exposed.
+ * Every referral code operation takes your application's own server key (a
+ * `client_credentials` token). A user or installation token gets `403 app_credentials_required`.
  *
  */
-export const getAttributionStats = <ThrowOnError extends boolean = false>(
-  options: Options<GetAttributionStatsData, ThrowOnError>,
+export const listReferralCodes = <ThrowOnError extends boolean = false>(
+  options?: Options<ListReferralCodesData, ThrowOnError>,
 ): RequestResult<
-  GetAttributionStatsResponses,
-  GetAttributionStatsErrors,
+  ListReferralCodesResponses,
+  ListReferralCodesErrors,
   ThrowOnError
 > =>
-  (options.client ?? client).get<
-    GetAttributionStatsResponses,
-    GetAttributionStatsErrors,
+  (options?.client ?? client).get<
+    ListReferralCodesResponses,
+    ListReferralCodesErrors,
     ThrowOnError
   >({
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/campaigns/{campaign_id}/attribution/stats",
+    url: "/referral_codes",
     ...options,
   });
 
 /**
- * List attributed investments
+ * Create a referral code
  *
- * Returns a list of attributed investments. The detail level depends on your access:
+ * Mints a referral code for your application. No relationship with the company is needed.
+ * Put it on any wefunder.com link as `?wfr=<id>`.
  *
- * **Tier 1 (Marketing Partners)** - Anonymized data:
- * - Investor identity represented by opaque tokens (not real IDs)
- * - Tokens are campaign-scoped (different token per campaign for same investor)
- * - Investment amounts shown as tiers (small/medium/large), not exact values
- * - No PII (email, name, address) is returned
+ * Before its first code, your organization must accept the referral attribution terms once:
+ * Wefunder does not pay partners per referral, and a partner may not be compensated per
+ * referral unless it is a registered broker-dealer. Until an owner or admin accepts them in
+ * the developer portal, this returns `422 attribution_terms_required` with
+ * `details.acceptance_url`.
  *
- * **Tier 2 (Founders/Employees)** - Full data with `detail_level=full`:
- * - Real investment IDs (linkable to Wefunder admin)
- * - Investor name, email, and username
- * - Exact dollar amounts
- *
- * **Access**: Requires Tier 1+ access approval from Wefunder admin.
+ * An application may have at most 500 active codes (`422 quota_exceeded`); deactivate codes
+ * you no longer use. UTM presets fill blank `utm_*` fields on visits that carry the code. A
+ * `source` or `campaign` starting with `wf_` is reserved for Wefunder's own channels and
+ * returns `422 reserved_utm_prefix`. Idempotency keys are not supported here: a retried
+ * request may create a second code, which you can deactivate.
  *
  */
-export const listAttributedInvestments = <ThrowOnError extends boolean = false>(
-  options: Options<ListAttributedInvestmentsData, ThrowOnError>,
+export const createReferralCode = <ThrowOnError extends boolean = false>(
+  options: Options<CreateReferralCodeData, ThrowOnError>,
 ): RequestResult<
-  ListAttributedInvestmentsResponses,
-  ListAttributedInvestmentsErrors,
+  CreateReferralCodeResponses,
+  CreateReferralCodeErrors,
   ThrowOnError
 > =>
-  (options.client ?? client).get<
-    ListAttributedInvestmentsResponses,
-    ListAttributedInvestmentsErrors,
+  (options.client ?? client).post<
+    CreateReferralCodeResponses,
+    CreateReferralCodeErrors,
     ThrowOnError
   >({
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/campaigns/{campaign_id}/attribution/investments",
+    url: "/referral_codes",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+/**
+ * Retrieve a referral code
+ */
+export const getReferralCode = <ThrowOnError extends boolean = false>(
+  options: Options<GetReferralCodeData, ThrowOnError>,
+): RequestResult<
+  GetReferralCodeResponses,
+  GetReferralCodeErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetReferralCodeResponses,
+    GetReferralCodeErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/referral_codes/{id}",
+    ...options,
+  });
+
+/**
+ * Update a referral code
+ *
+ * Changes the label, pauses or resumes the code (`active`), or replaces its UTM presets. The
+ * target is fixed at creation. A paused code is ignored on arrival; existing cookies still
+ * credit investments for up to 30 days. Reactivating counts against the 500 active codes.
+ *
+ */
+export const updateReferralCode = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateReferralCodeData, ThrowOnError>,
+): RequestResult<
+  UpdateReferralCodeResponses,
+  UpdateReferralCodeErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).patch<
+    UpdateReferralCodeResponses,
+    UpdateReferralCodeErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/referral_codes/{id}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+/**
+ * Referral code stats
+ *
+ * What your code produced, per company. Your access to each company decides what you see:
+ *
+ * - **Counts** (any app): for each company in the code's scope, one cell per ISO week (Monday
+ * to Sunday, UTC) with the unique investors referred that week as a range, `{min, max}`.
+ * Ranges are never exact, currently of width 3 and starting at zero, so `{0, 2}` also means
+ * none. Each week is published once, early on the following Monday, and never revised; the
+ * current week has no cell. There are no totals across weeks or companies, and no amounts.
+ * - **Rows** (your app is installed on the company with `read:attribution:anonymized`, or at
+ * founder tier with `read:attribution:full`): that company's referred investments instead of
+ * ranges, anonymized or in full.
+ *
+ * A targeted code's scope is its target; an untargeted code's scope is every company its
+ * visitors landed on. `visits` and `unique_visitors` are a daily snapshot up to the end of
+ * `visits_as_of` (UTC). Paginated over companies; each company's weekly series is complete.
+ *
+ */
+export const getReferralCodeStats = <ThrowOnError extends boolean = false>(
+  options: Options<GetReferralCodeStatsData, ThrowOnError>,
+): RequestResult<
+  GetReferralCodeStatsResponses,
+  GetReferralCodeStatsErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetReferralCodeStatsResponses,
+    GetReferralCodeStatsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/referral_codes/{id}/stats",
     ...options,
   });
 
@@ -2189,79 +2253,66 @@ export const testWebhookEndpoint = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * List attribution webhook subscriptions
+ * List member links
  *
- * Returns all active webhook subscriptions for this campaign belonging to
- * your OAuth application.
- *
- * **Tier 1** endpoint requiring admin-approved access with the
- * `read:attribution:anonymized` scope.
+ * The member links **your install** minted on this offering, newest first.
+ * Another app installed on the same offering never sees them, and they never
+ * appear in `/invite_links`. Requires a syndicate- or company-owned token of an
+ * app installed on the offering's syndicate or company.
  *
  */
-export const listWebhookSubscriptions = <ThrowOnError extends boolean = false>(
-  options: Options<ListWebhookSubscriptionsData, ThrowOnError>,
+export const listOfferingMemberLinks = <ThrowOnError extends boolean = false>(
+  options: Options<ListOfferingMemberLinksData, ThrowOnError>,
 ): RequestResult<
-  ListWebhookSubscriptionsResponses,
-  ListWebhookSubscriptionsErrors,
+  ListOfferingMemberLinksResponses,
+  ListOfferingMemberLinksErrors,
   ThrowOnError
 > =>
   (options.client ?? client).get<
-    ListWebhookSubscriptionsResponses,
-    ListWebhookSubscriptionsErrors,
+    ListOfferingMemberLinksResponses,
+    ListOfferingMemberLinksErrors,
     ThrowOnError
   >({
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/campaigns/{campaign_id}/attribution/webhooks",
+    url: "/offerings/{id}/member_links",
     ...options,
   });
 
 /**
- * Create webhook subscription
+ * Create a member link
  *
- * Creates a new webhook subscription for this campaign. When attributed
- * investments change state, we'll POST a JSON payload to your target URL.
+ * Mints a link that sends one of your members to this offering's deal page. It
+ * carries no email: it binds to the first Wefunder account that invests through
+ * it, whatever address that account uses, or up front when you pass the
+ * `wefunder_user_id` of a member whose account you already know. A bound link
+ * answers only to its account: anyone else (logged out, or another account) gets
+ * no private access and no invited pricing, and is asked to sign in with the
+ * invited account.
  *
- * **Tier 1** endpoint requiring admin-approved access.
+ * The member gets what an invitation from the offering's manager or founder
+ * gets: access to a private round and invited pricing.
  *
- * ## Webhook Payload
- *
- * Payloads include anonymized data (tokens, amount tiers) matching the
- * `/attribution/investments` endpoint.
- *
- * ## Security
- *
- * - `target_url` must use HTTPS
- * - `target_url` cannot resolve to private/internal IPs (SSRF protection)
- * - Payloads are signed with HMAC-SHA256 using the returned `secret`
- *
- * ## Verification
- *
- * Verify webhook signatures using the `X-Wefunder-Signature` header:
- * ```
- * timestamp = headers['X-Wefunder-Timestamp']
- * signature = headers['X-Wefunder-Signature']
- * expected = "sha256=" + HMAC-SHA256(secret, timestamp + "." + raw_body)
- * ```
- *
- * Reject requests where:
- * - Signature doesn't match
- * - Timestamp is more than 5 minutes old (replay protection)
+ * Pass `reference` (your member id) to make the create idempotent per offering:
+ * repeating it returns the live link with 200. The same reference on another
+ * offering mints that offering's own link, since a member gets one link per
+ * deal. Requires a syndicate- or company-owned token of an app installed on the
+ * offering's syndicate or company; user tokens get 404.
  *
  */
-export const createWebhookSubscription = <ThrowOnError extends boolean = false>(
-  options: Options<CreateWebhookSubscriptionData, ThrowOnError>,
+export const createOfferingMemberLink = <ThrowOnError extends boolean = false>(
+  options: Options<CreateOfferingMemberLinkData, ThrowOnError>,
 ): RequestResult<
-  CreateWebhookSubscriptionResponses,
-  CreateWebhookSubscriptionErrors,
+  CreateOfferingMemberLinkResponses,
+  CreateOfferingMemberLinkErrors,
   ThrowOnError
 > =>
   (options.client ?? client).post<
-    CreateWebhookSubscriptionResponses,
-    CreateWebhookSubscriptionErrors,
+    CreateOfferingMemberLinkResponses,
+    CreateOfferingMemberLinkErrors,
     ThrowOnError
   >({
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/campaigns/{campaign_id}/attribution/webhooks",
+    url: "/offerings/{id}/member_links",
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -2270,287 +2321,50 @@ export const createWebhookSubscription = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * Delete webhook subscription
+ * Get a member link
  *
- * Deactivates a webhook subscription. The subscription will stop receiving
- * events but historical delivery data is retained for 7 days.
- *
- */
-export const deleteWebhookSubscription = <ThrowOnError extends boolean = false>(
-  options: Options<DeleteWebhookSubscriptionData, ThrowOnError>,
-): RequestResult<
-  DeleteWebhookSubscriptionResponses,
-  DeleteWebhookSubscriptionErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).delete<
-    DeleteWebhookSubscriptionResponses,
-    DeleteWebhookSubscriptionErrors,
-    ThrowOnError
-  >({
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/campaigns/{campaign_id}/attribution/webhooks/{webhook_id}",
-    ...options,
-  });
-
-/**
- * Get webhook subscription details
- *
- * Returns details for a specific webhook subscription including recent
- * delivery history.
+ * A member link your install minted, with its live `state`. Links minted by
+ * another app answer 404.
  *
  */
-export const getWebhookSubscription = <ThrowOnError extends boolean = false>(
-  options: Options<GetWebhookSubscriptionData, ThrowOnError>,
-): RequestResult<
-  GetWebhookSubscriptionResponses,
-  GetWebhookSubscriptionErrors,
-  ThrowOnError
-> =>
+export const getMemberLink = <ThrowOnError extends boolean = false>(
+  options: Options<GetMemberLinkData, ThrowOnError>,
+): RequestResult<GetMemberLinkResponses, GetMemberLinkErrors, ThrowOnError> =>
   (options.client ?? client).get<
-    GetWebhookSubscriptionResponses,
-    GetWebhookSubscriptionErrors,
+    GetMemberLinkResponses,
+    GetMemberLinkErrors,
     ThrowOnError
   >({
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/campaigns/{campaign_id}/attribution/webhooks/{webhook_id}",
+    url: "/member_links/{id}",
     ...options,
   });
 
 /**
- * Send test webhook
+ * Cancel a member link
  *
- * Sends a test webhook to verify your endpoint is working correctly.
- * The test payload includes a `"event": "test"` field to distinguish
- * it from real events.
+ * Retracts the invitation. Idempotent. The link grants nothing new afterwards:
+ * a checkout started after the cancel, including the same member's next
+ * investment, is priced at standard terms. Investments already made through the
+ * link keep the terms they were made at. A link nobody invested through is
+ * also released from the account you pre-bound it to. Revoking your install
+ * cancels every member link it minted that no investment went through (same
+ * release); links an investment went through stand.
  *
  */
-export const testWebhookSubscription = <ThrowOnError extends boolean = false>(
-  options: Options<TestWebhookSubscriptionData, ThrowOnError>,
+export const cancelMemberLink = <ThrowOnError extends boolean = false>(
+  options: Options<CancelMemberLinkData, ThrowOnError>,
 ): RequestResult<
-  TestWebhookSubscriptionResponses,
-  TestWebhookSubscriptionErrors,
+  CancelMemberLinkResponses,
+  CancelMemberLinkErrors,
   ThrowOnError
 > =>
   (options.client ?? client).post<
-    TestWebhookSubscriptionResponses,
-    TestWebhookSubscriptionErrors,
+    CancelMemberLinkResponses,
+    CancelMemberLinkErrors,
     ThrowOnError
   >({
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/campaigns/{campaign_id}/attribution/webhooks/{webhook_id}/test",
-    ...options,
-  });
-
-/**
- * Regenerate webhook signing secret
- *
- * Generates a new HMAC signing secret for the webhook subscription.
- * The old secret is immediately invalidated.
- *
- * **Important**: Store the new secret securely - it cannot be retrieved later.
- *
- */
-export const regenerateWebhookSecret = <ThrowOnError extends boolean = false>(
-  options: Options<RegenerateWebhookSecretData, ThrowOnError>,
-): RequestResult<
-  RegenerateWebhookSecretResponses,
-  RegenerateWebhookSecretErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    RegenerateWebhookSecretResponses,
-    RegenerateWebhookSecretErrors,
-    ThrowOnError
-  >({
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/campaigns/{campaign_id}/attribution/webhooks/{webhook_id}/regenerate_secret",
-    ...options,
-  });
-
-/**
- * Reactivate disabled webhook
- *
- * Reactivates a webhook subscription that was auto-disabled after
- * consecutive failures. Resets the failure counter to 0.
- *
- * Use this after fixing issues with your webhook endpoint.
- *
- */
-export const reactivateWebhookSubscription = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<ReactivateWebhookSubscriptionData, ThrowOnError>,
-): RequestResult<
-  ReactivateWebhookSubscriptionResponses,
-  ReactivateWebhookSubscriptionErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    ReactivateWebhookSubscriptionResponses,
-    ReactivateWebhookSubscriptionErrors,
-    ThrowOnError
-  >({
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/campaigns/{campaign_id}/attribution/webhooks/{webhook_id}/reactivate",
-    ...options,
-  });
-
-/**
- * Get current user's attribution profile
- *
- * Returns the authenticated user's marketing partner profile and connected campaigns.
- * If the user is not registered as a marketing partner, returns partner info as null.
- *
- */
-export const getAttributionMe = <ThrowOnError extends boolean = false>(
-  options?: Options<GetAttributionMeData, ThrowOnError>,
-): RequestResult<
-  GetAttributionMeResponses,
-  GetAttributionMeErrors,
-  ThrowOnError
-> =>
-  (options?.client ?? client).get<
-    GetAttributionMeResponses,
-    GetAttributionMeErrors,
-    ThrowOnError
-  >({
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/attribution/me",
-    ...options,
-  });
-
-/**
- * List campaigns accessible to the current user
- *
- * Returns all campaigns the authenticated user can access for attribution data.
- * For founders, this includes their own campaigns.
- * For marketing partners, this includes campaigns they've been granted access to.
- *
- */
-export const listAttributionCampaigns = <ThrowOnError extends boolean = false>(
-  options?: Options<ListAttributionCampaignsData, ThrowOnError>,
-): RequestResult<
-  ListAttributionCampaignsResponses,
-  ListAttributionCampaignsErrors,
-  ThrowOnError
-> =>
-  (options?.client ?? client).get<
-    ListAttributionCampaignsResponses,
-    ListAttributionCampaignsErrors,
-    ThrowOnError
-  >({
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/attribution/campaigns",
-    ...options,
-  });
-
-/**
- * Register as a marketing partner
- *
- * Registers the authenticated user as a marketing partner.
- * After registration, the partner can create invites to request access to campaigns.
- *
- */
-export const registerAsPartner = <ThrowOnError extends boolean = false>(
-  options: Options<RegisterAsPartnerData, ThrowOnError>,
-): RequestResult<
-  RegisterAsPartnerResponses,
-  RegisterAsPartnerErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    RegisterAsPartnerResponses,
-    RegisterAsPartnerErrors,
-    ThrowOnError
-  >({
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/attribution/partners/register",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  });
-
-/**
- * List partner invites
- *
- * Returns all invites created by or sent to the authenticated user.
- * Includes both pending and accepted invites.
- *
- */
-export const listPartnerInvites = <ThrowOnError extends boolean = false>(
-  options?: Options<ListPartnerInvitesData, ThrowOnError>,
-): RequestResult<
-  ListPartnerInvitesResponses,
-  ListPartnerInvitesErrors,
-  ThrowOnError
-> =>
-  (options?.client ?? client).get<
-    ListPartnerInvitesResponses,
-    ListPartnerInvitesErrors,
-    ThrowOnError
-  >({
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/attribution/invites",
-    ...options,
-  });
-
-/**
- * Create a partner invite
- *
- * Creates an invite to establish a partner-company connection.
- *
- * **Directions**:
- * - `partner_to_founder`: Marketing partner invites a founder to grant access
- * - `founder_to_partner`: Founder invites a marketing partner to access their campaign
- *
- * For `partner_to_founder`: Creates a shareable invite link.
- * For `founder_to_partner`: Sends an email to the partner.
- *
- */
-export const createPartnerInvite = <ThrowOnError extends boolean = false>(
-  options: Options<CreatePartnerInviteData, ThrowOnError>,
-): RequestResult<
-  CreatePartnerInviteResponses,
-  CreatePartnerInviteErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    CreatePartnerInviteResponses,
-    CreatePartnerInviteErrors,
-    ThrowOnError
-  >({
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/attribution/invites",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  });
-
-/**
- * Revoke a partner invite
- *
- * Revokes a pending invite. Only the creator can revoke an invite.
- * Accepted invites cannot be revoked (delete the connection instead).
- *
- */
-export const revokePartnerInvite = <ThrowOnError extends boolean = false>(
-  options: Options<RevokePartnerInviteData, ThrowOnError>,
-): RequestResult<
-  RevokePartnerInviteResponses,
-  RevokePartnerInviteErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).delete<
-    RevokePartnerInviteResponses,
-    RevokePartnerInviteErrors,
-    ThrowOnError
-  >({
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/attribution/invites/{token}",
+    url: "/member_links/{id}/cancel",
     ...options,
   });

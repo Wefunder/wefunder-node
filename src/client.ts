@@ -24,7 +24,6 @@ import type {
   Campaign,
   Syndicate,
   Intent,
-  AttributionMe,
   PortfolioPosition,
   PortfolioSummaryEnvelope,
   ListOfferingsData,
@@ -38,6 +37,16 @@ import type {
   InstallationTokenEnvelope,
   EligibleTargetListEnvelope,
   CreateInstallationData,
+  MemberLink,
+  MemberLinkListEnvelope,
+  MemberLinkCreateInput,
+  ReferralCode,
+  ReferralCodeListEnvelope,
+  ReferralCodeStatsEnvelope,
+  CreateReferralCodeData,
+  UpdateReferralCodeData,
+  ListReferralCodesData,
+  GetReferralCodeStatsData,
   WebhookEndpoint,
   WebhookEndpointListEnvelope,
   WebhookEndpointTestResultEnvelope,
@@ -79,6 +88,18 @@ export type InstallationWithToken = InstallationTokenEnvelope;
 export type EligibleInstallTarget = NonNullable<
   EligibleTargetListEnvelope["data"]
 >[number];
+/** Body for `wf.referralCodes.create()`. */
+export type CreateReferralCodeInput = CreateReferralCodeData["body"];
+/** Body for `wf.referralCodes.update()`. */
+export type UpdateReferralCodeInput = UpdateReferralCodeData["body"];
+/** Filters for `wf.referralCodes.list()` (`cursor` is managed by auto-pagination). */
+export type ReferralCodesFilters = Omit<NonNullable<ListReferralCodesData["query"]>, "cursor">;
+/** Query for `wf.referralCodes.stats()`. */
+export type ReferralCodeStatsQuery = NonNullable<GetReferralCodeStatsData["query"]>;
+/** The stats envelope: `data.attributes.companies` plus `meta` for paging the company list. */
+export type ReferralCodeStats = ReferralCodeStatsEnvelope;
+/** `wf.memberLinks.list()` page envelope. */
+export type MemberLinkList = MemberLinkListEnvelope;
 /** Documented `sort` values for the offerings list, from the generated op. */
 export type OfferingSort = NonNullable<ListOfferingsData["query"]>["sort"];
 /**
@@ -131,7 +152,7 @@ export interface RawRequestOptions {
 // remains a working back-compat alias. The API version is pinned via the
 // `Wefunder-Version` header (DEFAULT_API_VERSION), not the path.
 export const DEFAULT_API_BASE_URL = "https://api.wefunder.com";
-export const DEFAULT_API_VERSION = "2025-01-15";
+export const DEFAULT_API_VERSION = "2026-10-15";
 
 export type Mode = "live" | "test" | "unknown";
 
@@ -532,10 +553,80 @@ export class Wefunder {
       ),
   };
 
-  attribution = {
-    me: () =>
-      this.#unwrapData<AttributionMe>(
-        ops.getAttributionMe({ client: this.#client }),
+  /**
+   * Member links (`/offerings/{id}/member_links`, `/member_links/{id}`; scopes `read:invite_links`
+   * / `write:invite_links`). Your app's per-person links that send a member to one deal page and
+   * report what they did. Needs a company- or syndicate-owned token of an app installed on the
+   * offering's syndicate or company; a user token gets 404.
+   */
+  memberLinks = {
+    /** One page of the offering's links. */
+    list: (offeringId: string, query?: { cursor?: Cursor }): Promise<Page<MemberLink>> =>
+      this.#unwrap<Page<MemberLink>>(
+        ops.listOfferingMemberLinks({
+          client: this.#client,
+          path: { id: offeringId },
+          query: query as never,
+        }) as Result<Page<MemberLink>>,
+      ),
+    all: (offeringId: string): AsyncGenerator<MemberLink> =>
+      paginate((cursor) => this.memberLinks.list(offeringId, { cursor })),
+    /**
+     * Mint a link for one member. Repeating a `reference` returns the live link (200) instead of
+     * a second one; pass `idempotencyKey` to make retries safe.
+     */
+    create: (
+      offeringId: string,
+      input?: MemberLinkCreateInput,
+      opts: { idempotencyKey?: string } = {},
+    ) =>
+      this.#unwrapData<MemberLink>(
+        ops.createOfferingMemberLink({
+          client: this.#client,
+          path: { id: offeringId },
+          body: input ? { member_link: input } : undefined,
+          headers: opts.idempotencyKey ? { "Idempotency-Key": opts.idempotencyKey } : undefined,
+        }),
+      ),
+    get: (id: string) =>
+      this.#unwrapData<MemberLink>(
+        ops.getMemberLink({ client: this.#client, path: { id } }),
+      ),
+    /** Cancel a link that has not been used; it stops opening the deal page. */
+    cancel: (id: string) =>
+      this.#unwrapData<MemberLink>(
+        ops.cancelMemberLink({ client: this.#client, path: { id } }),
+      ),
+  };
+
+  /**
+   * Referral codes (`/referral_codes`, scopes `read:referral_codes` / `write:referral_codes`;
+   * beta). Mint with your app's server key, add `?wfr=ref_…` to any wefunder.com link, and read
+   * per-company weekly cohorts from `stats`. Investors are never identified.
+   */
+  referralCodes = {
+    list: this.#page<ReferralCode, ReferralCodesFilters & { cursor?: Cursor }>(
+      ops.listReferralCodes as never,
+    ),
+    all: (query?: ReferralCodesFilters): AsyncGenerator<ReferralCode> =>
+      paginate((cursor) => this.referralCodes.list({ ...query, cursor })),
+    get: (id: string) =>
+      this.#unwrapData<ReferralCode>(
+        ops.getReferralCode({ client: this.#client, path: { id } }),
+      ),
+    /** Not idempotent: a retried create can mint a second code, which you can deactivate. */
+    create: (input: CreateReferralCodeInput) =>
+      this.#unwrapData<ReferralCode>(
+        ops.createReferralCode({ client: this.#client, body: input }),
+      ),
+    update: (id: string, input: UpdateReferralCodeInput) =>
+      this.#unwrapData<ReferralCode>(
+        ops.updateReferralCode({ client: this.#client, path: { id }, body: input }),
+      ),
+    /** Weekly cohorts per company (`meta.next_cursor` pages the company list). */
+    stats: (id: string, query?: ReferralCodeStatsQuery) =>
+      this.#unwrap<ReferralCodeStats>(
+        ops.getReferralCodeStats({ client: this.#client, path: { id }, query }),
       ),
   };
 

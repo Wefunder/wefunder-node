@@ -58,7 +58,7 @@ docs build treats all three identically.
   "lang": "JavaScript",        // MUST equal the docs tab label (JavaScript | Python | Ruby)
   "label": "@wefunder/sdk",    // shown on the tab
   "sdkVersion": "0.1.0-beta.5",
-  "apiVersion": "2025-01-15",  // the Wefunder-Version the SDK pins
+  "apiVersion": "2026-10-15",  // the Wefunder-Version the SDK pins
   "samples": {                 // keyed by operationId — the join key across spec + all langs
     "listOfferings": "const page = await wf.offerings.list(...);\n…"
   }
