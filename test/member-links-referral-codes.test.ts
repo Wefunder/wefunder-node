@@ -3,6 +3,7 @@
 import { describe, it, expect } from "vitest";
 import { Wefunder, DEFAULT_API_VERSION } from "../src/index.js";
 import { makeFetch, json, noSleep } from "./helpers.js";
+import { example as statsExample } from "../examples/getReferralCodeStats.js";
 
 const mk = (fetch: typeof globalThis.fetch) => new Wefunder({ accessToken: "at_live_x", fetch, sleep: noSleep });
 const link = { id: "il_1", type: "member_link", attributes: { reference: "member_8812", state: "created", url: "https://wefunder.com/x?invite_token=t" } };
@@ -58,7 +59,10 @@ describe("referralCodes namespace", () => {
       const u = new URL(c.url);
       if (u.pathname === "/referral_codes" && c.method === "GET") return json({ data: [code], meta: { has_more: false, next_cursor: null, active_limit: 50 } });
       if (u.pathname === "/referral_codes/ref_1/stats")
-        return json({ data: { id: "ref_1", type: "referral_code_stats", attributes: { label: "October", companies: [{ company: "co_1", level: "anonymized", weeks: [] }] } }, meta: { has_more: false, next_cursor: null } });
+        return json({ data: { id: "ref_1", type: "referral_code_stats", attributes: { label: "October", companies: [
+          { company: "co_1", level: "counts", in_scope_since: "2026-W40", weeks: [{ week: "2026-W41", clicks: 3 }] },
+          { company: "co_2", level: "anonymized", investments: [{ investment: "opq_i", investor: "opq_u", week: "2026-W41", amount_tier: "1k_to_5k", status: "active", time_to_invest: "same_day" }] },
+        ] } }, meta: { has_more: false, next_cursor: null } });
       return json({ data: code }, { status: c.method === "POST" ? 201 : 200 });
     });
     const wf = mk(fetch);
@@ -71,6 +75,12 @@ describe("referralCodes namespace", () => {
     const stats = await wf.referralCodes.stats("ref_1", { company_id: "co_1" });
     expect(stats.data?.attributes?.companies?.[0]?.company).toBe("co_1");
     expect(stats.meta?.has_more).toBe(false);
+    // The two shapes a company can take: counts → weeks, anonymized/full → investments (no weeks).
+    const [counts, rows] = stats.data!.attributes!.companies!;
+    expect(counts!.weeks).toHaveLength(1);
+    expect(rows!.weeks).toBeUndefined();
+    expect(rows!.investments).toHaveLength(1);
+    await expect(statsExample(wf)).resolves.toBeDefined(); // the published example handles both
     expect(calls.map((c) => `${c.method} ${new URL(c.url).pathname}`)).toEqual([
       "GET /referral_codes", "POST /referral_codes", "GET /referral_codes/ref_1", "PATCH /referral_codes/ref_1", "GET /referral_codes/ref_1/stats",
     ]);

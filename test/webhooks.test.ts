@@ -429,6 +429,9 @@ describe("2026-10-15 catalog additions are typed", () => {
     const ref = verify({ referral_code: "ref_1", company: "co_1", investment: "opq_i", investor: "opq_u", week: "2026-W42", amount_tier: "1k_to_5k", status: "active", time_to_invest: "same_day" }, "investment.referred");
     if (ref.event === "investment.referred") expect(ref.data.week).toBe("2026-W42");
     else throw new Error("not narrowed");
+    const embedded = verify({ id: "jss_2", syndicate: "syn_1", status: "joined", user: { id: "usr_1", name: "A" }, theme: { id: null, version: 2, override_fingerprint: "fp_abc" }, occurred_at: "x" }, "join_session.completed");
+    if (embedded.event === "join_session.completed") expect(embedded.data.theme.version! + 1).toBe(3); // numeric, as the API produces it
+    else throw new Error("not narrowed");
     const pub = verify({ week: "2026-W42", published_at: "2026-10-19T00:05:00Z" }, "referral_cohorts.published");
     if (pub.event === "referral_cohorts.published") expect(pub.data.published_at).toMatch(/^2026/);
     else throw new Error("not narrowed");

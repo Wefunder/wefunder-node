@@ -172,7 +172,8 @@ export interface JoinSessionEventData {
   ineligible_reason?: "accreditation_required" | "jurisdiction" | "blocked" | "club_unavailable" | "requires_investment" | null;
   /** Null when nobody had signed in (a session canceled or expired before it was claimed). */
   user: { id: string | null; name: string | null } | null;
-  theme: { id: string | null; version: string | null; override_fingerprint: string | null };
+  /** Null for hosted sessions; the embedded surface populates a numeric `version` and a fingerprint. */
+  theme: { id: string | null; version: number | null; override_fingerprint: string | null };
   occurred_at: string;
 }
 
