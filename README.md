@@ -110,6 +110,16 @@ const wf = new Wefunder({
 
 If several application instances can use the same OAuth connection, serialize refreshes for that connection. This prevents two instances from trying to rotate the same refresh token at once.
 
+## API version
+
+The SDK sends `Wefunder-Version: 2026-10-15` on every request (`DEFAULT_API_VERSION`). Pass
+`apiVersion` to the constructor to pin an older one. 1.1.0 moved the default from the pre-launch
+`2025-01-15` alias: `GET /activity` and the syndicate deal `close` / `finalize` operations (and the
+`syndicates.close_deal` / `finalize_deal` intent actions) are not part of 2026-10-15, so they left
+`wf.raw.*`; the legacy Attribution and attribution-webhook operations, removed from the API on
+2026-10-14, left with them. Use `wf.referralCodes` instead of the attribution reads. See the
+[migration guide](https://docs.wefunder.com/resources/versioning).
+
 ## Calling the API
 
 Common resources are available through typed namespaces:
@@ -120,7 +130,7 @@ const investments = await wf.investments.list({ company_id: "co_example" });
 const portfolio = await wf.portfolio.get();
 ```
 
-Namespaces: `users`, `offerings`, `investments`, `portfolio`, `campaigns`, `syndicates`, `intents`, `attribution`, `installations`, and `webhookEndpoints`.
+Namespaces: `users`, `offerings`, `investments`, `portfolio`, `campaigns`, `syndicates`, `intents`, `installations`, `memberLinks`, `referralCodes`, `joinSessions`, `investmentSessions`, and `webhookEndpoints`.
 
 `wf.offerings.stats(id)` returns an offering's aggregate investment stats. `wf.installations` lets your app act as a company or syndicate: `eligibleTargets()`, `create()`, `mintToken()`, `list()`, `get()`, `revoke()`, and `installOrMintToken()`, which handles the API's 409 `already_installed` answer by minting a token for the existing install with the same scopes.
 

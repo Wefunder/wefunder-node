@@ -150,11 +150,80 @@ export interface SyndicateMemberEventData {
   id: string | null;
   /** The syndicate (`syn_…`). */
   syndicate: string | null;
-  status: "pending" | "approved" | "member";
+  /**
+   * `applied` → pending, `approved` → approved, `joined` → member; `left` → left (resigned),
+   * removed (by a manager) or payment_failed; `declined` → declined (by a manager) or withdrawn.
+   */
+  status: "pending" | "approved" | "member" | "left" | "removed" | "payment_failed" | "declined" | "withdrawn";
   user: { id: string | null; name: string | null; email: string | null };
   /** Null on an automatic or invited join. */
   approved_by: WebhookPersonRef | null;
   occurred_at: string;
+}
+
+/** `data` for the `join_session.*` events (founder-installed syndicate apps). */
+export interface JoinSessionEventData {
+  /** The join session (`jss_…`). */
+  id: string | null;
+  /** The syndicate (`syn_…`). */
+  syndicate: string | null;
+  status: "pending_approval" | "joined" | "rejected" | "ineligible" | "canceled" | "expired";
+  /** Only on `join_session.ineligible`. */
+  ineligible_reason?: "accreditation_required" | "jurisdiction" | "blocked" | "club_unavailable" | "requires_investment" | null;
+  /** Null when nobody had signed in (a session canceled or expired before it was claimed). */
+  user: { id: string | null; name: string | null } | null;
+  /** Null for hosted sessions; the embedded surface populates a numeric `version` and a fingerprint. */
+  theme: { id: string | null; version: number | null; override_fingerprint: string | null };
+  occurred_at: string;
+}
+
+/** A person rendered as a role only (`founder`, `manager`, `user`, `partner`, `wefunder`): never a name or email. */
+export interface WebhookRoleRef {
+  role: string;
+}
+
+/** `data` for `installation.created` / `.revoked`: your own install record, as `GET /installations` shows it. */
+export interface InstallationEventData {
+  /** The installation (`inst_…`). */
+  id: string | null;
+  status: "active" | "revoked";
+  /** `name` is null for a user target. */
+  target: { type: "company" | "syndicate" | "user"; id: string | null; name: string | null };
+  tier: string | null;
+  /** The granted set. */
+  scopes: string[];
+  installed_at: string | null;
+  installed_by: WebhookRoleRef | null;
+  /** `installation.revoked` only. */
+  revoked_at?: string | null;
+  revoked_by?: WebhookRoleRef | null;
+  occurred_at: string;
+}
+
+/**
+ * `data` for `investment.referred`: an investment credited to one of your referral codes, as the
+ * anonymized row `GET /referral_codes/{id}/stats` reports it. The investment and investor tokens
+ * are opaque and per app and company; they never identify the investor.
+ */
+export interface InvestmentReferredEventData {
+  /** The referral code (`ref_…`). */
+  referral_code: string | null;
+  /** The company (`co_…`). */
+  company: string | null;
+  investment: string;
+  investor: string;
+  /** ISO week of the investment, e.g. `2026-W42`. */
+  week: string;
+  amount_tier: string;
+  status: "active" | "inactive";
+  time_to_invest: "same_day" | "within_week" | "within_30_days";
+}
+
+/** `data` for `referral_cohorts.published` (every Monday, UTC): pull the stats for the numbers. */
+export interface ReferralCohortsPublishedEventData {
+  /** ISO week, e.g. `2026-W42`. */
+  week: string;
+  published_at: string;
 }
 
 /** Maps each event name to the documented shape of its `data`. */
@@ -180,6 +249,18 @@ export interface WebhookEventDataMap {
   "syndicate_member.applied": SyndicateMemberEventData;
   "syndicate_member.approved": SyndicateMemberEventData;
   "syndicate_member.joined": SyndicateMemberEventData;
+  "syndicate_member.left": SyndicateMemberEventData;
+  "syndicate_member.declined": SyndicateMemberEventData;
+  "join_session.pending_approval": JoinSessionEventData;
+  "join_session.completed": JoinSessionEventData;
+  "join_session.rejected": JoinSessionEventData;
+  "join_session.ineligible": JoinSessionEventData;
+  "join_session.canceled": JoinSessionEventData;
+  "join_session.expired": JoinSessionEventData;
+  "installation.created": InstallationEventData;
+  "installation.revoked": InstallationEventData;
+  "investment.referred": InvestmentReferredEventData;
+  "referral_cohorts.published": ReferralCohortsPublishedEventData;
 }
 
 // Compile-time check: every catalog name has a payload type. If a spec sync adds
