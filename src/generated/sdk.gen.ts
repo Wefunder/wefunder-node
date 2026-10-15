@@ -12,6 +12,9 @@ import type {
   ApproveSyndicateMemberData,
   ApproveSyndicateMemberErrors,
   ApproveSyndicateMemberResponses,
+  CancelInvestmentSessionData,
+  CancelInvestmentSessionErrors,
+  CancelInvestmentSessionResponses,
   CancelMemberLinkData,
   CancelMemberLinkErrors,
   CancelMemberLinkResponses,
@@ -24,12 +27,18 @@ import type {
   CreateIntentData,
   CreateIntentErrors,
   CreateIntentResponses,
+  CreateOfferingInvestmentSessionData,
+  CreateOfferingInvestmentSessionErrors,
+  CreateOfferingInvestmentSessionResponses,
   CreateOfferingMemberLinkData,
   CreateOfferingMemberLinkErrors,
   CreateOfferingMemberLinkResponses,
   CreateReferralCodeData,
   CreateReferralCodeErrors,
   CreateReferralCodeResponses,
+  CreateSyndicateJoinSessionData,
+  CreateSyndicateJoinSessionErrors,
+  CreateSyndicateJoinSessionResponses,
   CreateWebhookEndpointData,
   CreateWebhookEndpointErrors,
   CreateWebhookEndpointResponses,
@@ -69,6 +78,9 @@ import type {
   GetInvestmentData,
   GetInvestmentErrors,
   GetInvestmentResponses,
+  GetInvestmentSessionData,
+  GetInvestmentSessionErrors,
+  GetInvestmentSessionResponses,
   GetMemberLinkData,
   GetMemberLinkErrors,
   GetMemberLinkResponses,
@@ -92,6 +104,9 @@ import type {
   GetSyndicateDealErrors,
   GetSyndicateDealResponses,
   GetSyndicateErrors,
+  GetSyndicateJoinSessionData,
+  GetSyndicateJoinSessionErrors,
+  GetSyndicateJoinSessionResponses,
   GetSyndicatePortfolioData,
   GetSyndicatePortfolioErrors,
   GetSyndicatePortfolioResponses,
@@ -137,10 +152,16 @@ import type {
   ListIntentsResponses,
   ListInvestmentsData,
   ListInvestmentsErrors,
+  ListInvestmentSessionsData,
+  ListInvestmentSessionsErrors,
+  ListInvestmentSessionsResponses,
   ListInvestmentsResponses,
   ListMyCompaniesData,
   ListMyCompaniesErrors,
   ListMyCompaniesResponses,
+  ListOfferingInvestmentSessionsData,
+  ListOfferingInvestmentSessionsErrors,
+  ListOfferingInvestmentSessionsResponses,
   ListOfferingMemberLinksData,
   ListOfferingMemberLinksErrors,
   ListOfferingMemberLinksResponses,
@@ -159,6 +180,9 @@ import type {
   ListSyndicateDealsData,
   ListSyndicateDealsErrors,
   ListSyndicateDealsResponses,
+  ListSyndicateJoinSessionsData,
+  ListSyndicateJoinSessionsErrors,
+  ListSyndicateJoinSessionsResponses,
   ListSyndicateMemberInvestmentsData,
   ListSyndicateMemberInvestmentsErrors,
   ListSyndicateMemberInvestmentsResponses,
@@ -1341,6 +1365,90 @@ export const exportSyndicateMembersCsv = <ThrowOnError extends boolean = false>(
   });
 
 /**
+ * List join sessions
+ *
+ * List the join sessions your app's installation minted on this syndicate.
+ * Sessions are install-scoped: you only see the ones your own install created.
+ *
+ */
+export const listSyndicateJoinSessions = <ThrowOnError extends boolean = false>(
+  options: Options<ListSyndicateJoinSessionsData, ThrowOnError>,
+): RequestResult<
+  ListSyndicateJoinSessionsResponses,
+  ListSyndicateJoinSessionsErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    ListSyndicateJoinSessionsResponses,
+    ListSyndicateJoinSessionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/syndicates/{syndicate_id}/join_sessions",
+    ...options,
+  });
+
+/**
+ * Create a join session
+ *
+ * Mint a hosted join session that turns an invitee into a member of a
+ * syndicate you manage. The session is bound to one email; the recipient
+ * completes the join on `wefunder.com/join/session/{id}`, and you learn the
+ * outcome by polling this session or via `join_session.*` webhooks.
+ *
+ * Requires `write:syndicate_members` (included in `write:syndicates`),
+ * operator permission, and an active installation of your app on the
+ * syndicate. Phase 1 supports `mode: hosted` only.
+ *
+ */
+export const createSyndicateJoinSession = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<CreateSyndicateJoinSessionData, ThrowOnError>,
+): RequestResult<
+  CreateSyndicateJoinSessionResponses,
+  CreateSyndicateJoinSessionErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    CreateSyndicateJoinSessionResponses,
+    CreateSyndicateJoinSessionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/syndicates/{syndicate_id}/join_sessions",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+/**
+ * Get a join session
+ *
+ * Fetch one join session your app's installation minted on this syndicate,
+ * by its `js_` id. Poll this to learn the session's current status.
+ *
+ */
+export const getSyndicateJoinSession = <ThrowOnError extends boolean = false>(
+  options: Options<GetSyndicateJoinSessionData, ThrowOnError>,
+): RequestResult<
+  GetSyndicateJoinSessionResponses,
+  GetSyndicateJoinSessionErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetSyndicateJoinSessionResponses,
+    GetSyndicateJoinSessionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/syndicates/{syndicate_id}/join_sessions/{id}",
+    ...options,
+  });
+
+/**
  * List deals
  *
  * Returns the syndicate's **live** deals (open, oversubscribed, or closing) with status,
@@ -2366,5 +2474,159 @@ export const cancelMemberLink = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/member_links/{id}/cancel",
+    ...options,
+  });
+
+/**
+ * List investment sessions
+ *
+ * Lists the investment sessions your app created on this offering, newest first;
+ * filter by `status`. A session belongs to the application that created it: no other
+ * app sees it, even one of your organization. A syndicate- or company-owned token sees
+ * only its own syndicate's or company's sessions. An offering with none of your app's
+ * sessions lists nothing, so the id reveals nothing about the offering.
+ *
+ */
+export const listOfferingInvestmentSessions = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<ListOfferingInvestmentSessionsData, ThrowOnError>,
+): RequestResult<
+  ListOfferingInvestmentSessionsResponses,
+  ListOfferingInvestmentSessionsErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    ListOfferingInvestmentSessionsResponses,
+    ListOfferingInvestmentSessionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/offerings/{id}/investment_sessions",
+    ...options,
+  });
+
+/**
+ * Create an investment session
+ *
+ * Canonical path: the offering comes from the URL, so `spv_id` may be
+ * omitted from the body (if sent it must match, else 422 `offering_mismatch`).
+ * Authorized for any offering the caller may act on (an install on its
+ * syndicate or company, a role on it, or created by your app).
+ *
+ * Creates a single-use, recipient-specific hosted investment session (analogous to
+ * a Stripe Checkout Session) on the SPV named by `spv_id` in the body. The session
+ * walks one investor through accreditation, document signing, and payment, and
+ * produces a durable `Investment` on success. Returns a `url` the recipient opens
+ * to begin. If the recipient already has an active session on the SPV, that
+ * session is returned instead of creating a duplicate; if another app holds
+ * that recipient's active session there, the create is refused with 409
+ * `session_conflict` (a recipient has one active session per offering).
+ *
+ */
+export const createOfferingInvestmentSession = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<CreateOfferingInvestmentSessionData, ThrowOnError>,
+): RequestResult<
+  CreateOfferingInvestmentSessionResponses,
+  CreateOfferingInvestmentSessionErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    CreateOfferingInvestmentSessionResponses,
+    CreateOfferingInvestmentSessionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/offerings/{id}/investment_sessions",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+/**
+ * List investment sessions
+ *
+ * Alias of `/partner/investment_sessions` (#23636).
+ *
+ * Lists the investment sessions your app created, newest first. A session belongs
+ * to the application that created it: no other app sees it, even one of your
+ * organization. A syndicate- or company-owned token sees only its own syndicate's or
+ * company's sessions. Creating a session needs authority on the offering; reading or
+ * canceling one you created does not.
+ * Filter by `spv_id` and/or `status`.
+ *
+ */
+export const listInvestmentSessions = <ThrowOnError extends boolean = false>(
+  options?: Options<ListInvestmentSessionsData, ThrowOnError>,
+): RequestResult<
+  ListInvestmentSessionsResponses,
+  ListInvestmentSessionsErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    ListInvestmentSessionsResponses,
+    ListInvestmentSessionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/investment_sessions",
+    ...options,
+  });
+
+/**
+ * Cancel an investment session
+ *
+ * Alias of `/partner/investment_sessions` (#23636).
+ *
+ * Cancels a session so its link stops working. Valid while the session is
+ * `pending`, `in_progress`, or `abandoned`; repeating the call on an
+ * already-canceled session returns the same 200. A `completed` or `expired`
+ * session cannot be canceled (422 `session_not_cancelable`).
+ *
+ */
+export const cancelInvestmentSession = <ThrowOnError extends boolean = false>(
+  options: Options<CancelInvestmentSessionData, ThrowOnError>,
+): RequestResult<
+  CancelInvestmentSessionResponses,
+  CancelInvestmentSessionErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).delete<
+    CancelInvestmentSessionResponses,
+    CancelInvestmentSessionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/investment_sessions/{id}",
+    ...options,
+  });
+
+/**
+ * Get an investment session
+ *
+ * Alias of `/partner/investment_sessions` (#23636).
+ *
+ * Returns the full session including an `events` timeline of durable platform
+ * events recorded about it.
+ *
+ */
+export const getInvestmentSession = <ThrowOnError extends boolean = false>(
+  options: Options<GetInvestmentSessionData, ThrowOnError>,
+): RequestResult<
+  GetInvestmentSessionResponses,
+  GetInvestmentSessionErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetInvestmentSessionResponses,
+    GetInvestmentSessionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/investment_sessions/{id}",
     ...options,
   });

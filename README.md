@@ -130,7 +130,7 @@ const investments = await wf.investments.list({ company_id: "co_example" });
 const portfolio = await wf.portfolio.get();
 ```
 
-Namespaces: `users`, `offerings`, `investments`, `portfolio`, `campaigns`, `syndicates`, `intents`, `installations`, `memberLinks`, `referralCodes`, and `webhookEndpoints`.
+Namespaces: `users`, `offerings`, `investments`, `portfolio`, `campaigns`, `syndicates`, `intents`, `installations`, `memberLinks`, `referralCodes`, `joinSessions`, `investmentSessions`, and `webhookEndpoints`.
 
 `wf.offerings.stats(id)` returns an offering's aggregate investment stats. `wf.installations` lets your app act as a company or syndicate: `eligibleTargets()`, `create()`, `mintToken()`, `list()`, `get()`, `revoke()`, and `installOrMintToken()`, which handles the API's 409 `already_installed` answer by minting a token for the existing install with the same scopes.
 

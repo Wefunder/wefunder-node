@@ -37,6 +37,11 @@ import type {
   InstallationTokenEnvelope,
   EligibleTargetListEnvelope,
   CreateInstallationData,
+  InvestmentSession,
+  InvestmentSessionCreateInput,
+  CreateSyndicateJoinSessionData,
+  ListInvestmentSessionsData,
+  ListOfferingInvestmentSessionsData,
   MemberLink,
   MemberLinkListEnvelope,
   MemberLinkCreateInput,
@@ -88,6 +93,36 @@ export type InstallationWithToken = InstallationTokenEnvelope;
 export type EligibleInstallTarget = NonNullable<
   EligibleTargetListEnvelope["data"]
 >[number];
+/** Body for `wf.joinSessions.create()`. */
+export type CreateJoinSessionInput = CreateSyndicateJoinSessionData["body"]["join_session"];
+/**
+ * A syndicate join session as the API returns it (`js_…`). The spec publishes no schema for it
+ * yet, so this mirrors the server's serializer; treat unlisted fields as possible.
+ */
+export interface JoinSession {
+  id: string;
+  type: "join_session";
+  attributes: {
+    status: "pending" | "in_progress" | "pending_approval" | "joined" | "rejected" | "ineligible" | "canceled" | "expired" | string;
+    email: string | null;
+    name: string | null;
+    mode: "hosted" | string;
+    display: "redirect" | "popup" | null;
+    ineligible_reason: string | null;
+    require_approval: boolean;
+    success_url: string | null;
+    cancel_url: string | null;
+    /** The hosted landing page to send the person to. */
+    url: string;
+    expires_at: string | null;
+    created_at: string | null;
+    [key: string]: unknown;
+  };
+}
+/** Filters for `wf.investmentSessions.list()` / `.all()` (`cursor` is managed by auto-pagination). */
+export type InvestmentSessionsFilters = Omit<NonNullable<ListInvestmentSessionsData["query"]>, "cursor">;
+/** Filters for `wf.investmentSessions.listForOffering()` / `.allForOffering()`. */
+export type OfferingInvestmentSessionsFilters = Omit<NonNullable<ListOfferingInvestmentSessionsData["query"]>, "cursor">;
 /** Body for `wf.referralCodes.create()`. */
 export type CreateReferralCodeInput = CreateReferralCodeData["body"];
 /** Body for `wf.referralCodes.update()`. */
@@ -550,6 +585,80 @@ export class Wefunder {
           client: this.#client,
           path: { intent_id: String(id) },
         }),
+      ),
+  };
+
+  /**
+   * Syndicate join sessions (`/syndicates/{id}/join_sessions`; `write:syndicate_members` to mint,
+   * `read:syndicates` to read; beta). Mint a hosted session for an email, send the person to
+   * `attributes.url`, and learn the outcome by polling `get` or from the `join_session.*` webhooks.
+   */
+  joinSessions = {
+    list: (syndicateId: string, query?: { cursor?: Cursor; per_page?: number }): Promise<Page<JoinSession>> =>
+      this.#unwrap<Page<JoinSession>>(
+        ops.listSyndicateJoinSessions({
+          client: this.#client,
+          path: { syndicate_id: syndicateId },
+          query: query as never,
+        }) as Result<Page<JoinSession>>,
+      ),
+    all: (syndicateId: string, query?: { per_page?: number }): AsyncGenerator<JoinSession> =>
+      paginate((cursor) => this.joinSessions.list(syndicateId, { ...query, cursor })),
+    get: (syndicateId: string, id: string) =>
+      this.#unwrapData<JoinSession>(
+        ops.getSyndicateJoinSession({ client: this.#client, path: { syndicate_id: syndicateId, id } }) as Result<{ data?: JoinSession }>,
+      ),
+    /** Mint a session for one person (`email` required). Needs a manager's user token or the syndicate's own. */
+    create: (syndicateId: string, input: CreateJoinSessionInput) =>
+      this.#unwrapData<JoinSession>(
+        ops.createSyndicateJoinSession({
+          client: this.#client,
+          path: { syndicate_id: syndicateId },
+          body: { join_session: input },
+        }) as Result<{ data?: JoinSession }>,
+      ),
+  };
+
+  /**
+   * Hosted investment sessions (`/offerings/{id}/investment_sessions`, `/investment_sessions`;
+   * `read:investment_sessions` / `write:investment_sessions`; beta). A session puts a known
+   * investor straight into checkout for one offering and tracks that one investment.
+   */
+  investmentSessions = {
+    /** Every session your app created, across offerings. */
+    list: this.#page<InvestmentSession, InvestmentSessionsFilters & { cursor?: Cursor }>(
+      ops.listInvestmentSessions as never,
+    ),
+    all: (query?: InvestmentSessionsFilters): AsyncGenerator<InvestmentSession> =>
+      paginate((cursor) => this.investmentSessions.list({ ...query, cursor })),
+    listForOffering: (offeringId: string, query?: OfferingInvestmentSessionsFilters & { cursor?: Cursor }): Promise<Page<InvestmentSession>> =>
+      this.#unwrap<Page<InvestmentSession>>(
+        ops.listOfferingInvestmentSessions({
+          client: this.#client,
+          path: { id: offeringId },
+          query: query as never,
+        }) as Result<Page<InvestmentSession>>,
+      ),
+    allForOffering: (offeringId: string, query?: OfferingInvestmentSessionsFilters): AsyncGenerator<InvestmentSession> =>
+      paginate((cursor) => this.investmentSessions.listForOffering(offeringId, { ...query, cursor })),
+    get: (id: string) =>
+      this.#unwrapData<InvestmentSession>(
+        ops.getInvestmentSession({ client: this.#client, path: { id } }),
+      ),
+    /** Create a session on an offering; pass `idempotencyKey` to make a retry safe. */
+    create: (offeringId: string, input: InvestmentSessionCreateInput, opts: { idempotencyKey?: string } = {}) =>
+      this.#unwrapData<InvestmentSession>(
+        ops.createOfferingInvestmentSession({
+          client: this.#client,
+          path: { id: offeringId },
+          body: { investment_session: input },
+          headers: opts.idempotencyKey ? { "Idempotency-Key": opts.idempotencyKey } : undefined,
+        }),
+      ),
+    /** Cancel a session the recipient has not completed. */
+    cancel: (id: string) =>
+      this.#unwrapData<InvestmentSession>(
+        ops.cancelInvestmentSession({ client: this.#client, path: { id } }),
       ),
   };
 

@@ -3330,9 +3330,19 @@ export type InviteLink = {
   type?: string;
   attributes?: {
     /**
-     * Shareable invite URL. Carries the access token, not the id.
+     * Shareable invite URL. Carries the access token, not the id. A link
+     * made through the API opens the hosted investment flow
+     * (`/invest/link/...`); a link made on wefunder.com opens the deal page
+     * with its token (`/{company}?invite_token=...`), the URL wefunder.com
+     * sends.
+     * Null on a per-person invite whose recipient the caller may not see
+     * (see `email`): the URL carries the invite's access token and its page
+     * shows the recipient. Cancel, update and resend still work. An invite
+     * your app addressed by `wefunder_user_id` keeps its URL: its page names
+     * no address.
+     *
      */
-    url?: string;
+    url?: string | null;
     /**
      * `true` for a reusable (shareable) link, `false` for a per-person
      * invite. Fixed at creation. Use this, not the presence of `email`, to
@@ -3368,7 +3378,14 @@ export type InviteLink = {
     canceled_at?: string | null;
     created_at?: string;
     /**
-     * Per-person only — the recipient email you supplied at create. Always `null` for an invite addressed by `wefunder_user_id`, which never returns the account's email.
+     * Per-person only — recipient email. Always `null` for an invite
+     * addressed by `wefunder_user_id`, which never returns the account's
+     * email. Otherwise null unless the token holds `read:investors:pii`
+     * (on an install, the install must grant it too), except that the app
+     * which created the invite through the API with an `email` always sees
+     * the address it supplied. The invite still sends, resends and reports
+     * status when the email is null.
+     *
      */
     email?: string | null;
     /**
@@ -5966,6 +5983,208 @@ export type ExportSyndicateMembersCsvResponses = {
 export type ExportSyndicateMembersCsvResponse =
   ExportSyndicateMembersCsvResponses[keyof ExportSyndicateMembersCsvResponses];
 
+export type ListSyndicateJoinSessionsData = {
+  body?: never;
+  path: {
+    /**
+     * The syndicate's id (`syn_...`).
+     */
+    syndicate_id: string;
+  };
+  query?: {
+    /**
+     * Opaque cursor from the previous response's `meta.next_cursor`.
+     */
+    cursor?: string;
+    /**
+     * Results per page, 1-100. Defaults to 25.
+     */
+    per_page?: number;
+  };
+  url: "/syndicates/{syndicate_id}/join_sessions";
+};
+
+export type ListSyndicateJoinSessionsErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+};
+
+export type ListSyndicateJoinSessionsError =
+  ListSyndicateJoinSessionsErrors[keyof ListSyndicateJoinSessionsErrors];
+
+export type ListSyndicateJoinSessionsResponses = {
+  /**
+   * Successful response
+   */
+  200: {
+    [key: string]: unknown;
+  };
+};
+
+export type ListSyndicateJoinSessionsResponse =
+  ListSyndicateJoinSessionsResponses[keyof ListSyndicateJoinSessionsResponses];
+
+export type CreateSyndicateJoinSessionData = {
+  body: {
+    join_session: {
+      email: string;
+      name?: string;
+      mode?: "hosted";
+      display?: "redirect" | "popup";
+      /**
+       * Whether the resulting membership needs manager approval before it is joined.
+       */
+      require_approval?: boolean;
+      /**
+       * HTTPS URL to send the recipient to after they finish.
+       */
+      success_url?: string;
+      /**
+       * HTTPS URL to send the recipient to if they cancel.
+       */
+      cancel_url?: string;
+    };
+  };
+  path: {
+    /**
+     * The syndicate's id (`syn_...`).
+     */
+    syndicate_id: string;
+  };
+  query?: never;
+  url: "/syndicates/{syndicate_id}/join_sessions";
+};
+
+export type CreateSyndicateJoinSessionErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The request could not be fulfilled: the app is not installed on this
+   * syndicate (`app_not_installed`), the syndicate requires a subscription
+   * to join (`syndicate_requires_subscription`), the syndicate requires a
+   * fund investment to join (`syndicate_requires_fund_investment`), the mode
+   * is unsupported (`unsupported_mode`), or a success/cancel URL is not https
+   * (`invalid_success_url` / `invalid_cancel_url`).
+   *
+   */
+  422: Error;
+};
+
+export type CreateSyndicateJoinSessionError =
+  CreateSyndicateJoinSessionErrors[keyof CreateSyndicateJoinSessionErrors];
+
+export type CreateSyndicateJoinSessionResponses = {
+  /**
+   * Join session created
+   */
+  201: {
+    [key: string]: unknown;
+  };
+};
+
+export type CreateSyndicateJoinSessionResponse =
+  CreateSyndicateJoinSessionResponses[keyof CreateSyndicateJoinSessionResponses];
+
+export type GetSyndicateJoinSessionData = {
+  body?: never;
+  path: {
+    /**
+     * The syndicate's id (`syn_...`).
+     */
+    syndicate_id: string;
+    /**
+     * The join session's `js_` id.
+     */
+    id: string;
+  };
+  query?: never;
+  url: "/syndicates/{syndicate_id}/join_sessions/{id}";
+};
+
+export type GetSyndicateJoinSessionErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+};
+
+export type GetSyndicateJoinSessionError =
+  GetSyndicateJoinSessionErrors[keyof GetSyndicateJoinSessionErrors];
+
+export type GetSyndicateJoinSessionResponses = {
+  /**
+   * Successful response
+   */
+  200: {
+    [key: string]: unknown;
+  };
+};
+
+export type GetSyndicateJoinSessionResponse =
+  GetSyndicateJoinSessionResponses[keyof GetSyndicateJoinSessionResponses];
+
 export type ListSyndicateDealsData = {
   body?: never;
   path: {
@@ -8158,3 +8377,342 @@ export type CancelMemberLinkResponses = {
 
 export type CancelMemberLinkResponse =
   CancelMemberLinkResponses[keyof CancelMemberLinkResponses];
+
+export type ListOfferingInvestmentSessionsData = {
+  body?: never;
+  path: {
+    /**
+     * The SPV ID (prefixed, e.g. `spv_abc123`)
+     */
+    id: string;
+  };
+  query?: {
+    /**
+     * Only sessions in this state
+     */
+    status?:
+      | "pending"
+      | "in_progress"
+      | "completed"
+      | "abandoned"
+      | "expired"
+      | "canceled";
+    /**
+     * Page size (default 25, max 100)
+     */
+    per_page?: number;
+    /**
+     * Cursor-based pagination token. Use the `next_cursor` value from the previous response's
+     * `meta` object to retrieve the next page of results. Omit this parameter to retrieve the
+     * first page.
+     *
+     */
+    cursor?: number;
+  };
+  url: "/offerings/{id}/investment_sessions";
+};
+
+export type ListOfferingInvestmentSessionsErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * One or more request fields failed validation.
+   */
+  422: ValidationError;
+};
+
+export type ListOfferingInvestmentSessionsError =
+  ListOfferingInvestmentSessionsErrors[keyof ListOfferingInvestmentSessionsErrors];
+
+export type ListOfferingInvestmentSessionsResponses = {
+  /**
+   * Successful response
+   */
+  200: InvestmentSessionListEnvelope;
+};
+
+export type ListOfferingInvestmentSessionsResponse =
+  ListOfferingInvestmentSessionsResponses[keyof ListOfferingInvestmentSessionsResponses];
+
+export type CreateOfferingInvestmentSessionData = {
+  body: {
+    investment_session: InvestmentSessionCreateInput;
+  };
+  headers?: {
+    /**
+     * A unique client-generated key that makes a write request safe to retry. If a request
+     * is retried within 24 hours with the same key and body, the original result is returned
+     * instead of performing the operation again. Strongly recommended on all `POST` requests
+     * that create resources.
+     *
+     */
+    "Idempotency-Key"?: string;
+  };
+  path: {
+    /**
+     * The SPV ID (prefixed, e.g. `spv_abc123`)
+     */
+    id: string;
+  };
+  query?: never;
+  url: "/offerings/{id}/investment_sessions";
+};
+
+export type CreateOfferingInvestmentSessionErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+  /**
+   * The request conflicts with the resource's current state (for example, opening an
+   * SPV that is already open, or closing one that is not yet open).
+   *
+   */
+  409: Error;
+  /**
+   * One or more request fields failed validation.
+   */
+  422: ValidationError;
+};
+
+export type CreateOfferingInvestmentSessionError =
+  CreateOfferingInvestmentSessionErrors[keyof CreateOfferingInvestmentSessionErrors];
+
+export type CreateOfferingInvestmentSessionResponses = {
+  /**
+   * Investment session created
+   */
+  201: InvestmentSessionEnvelope;
+};
+
+export type CreateOfferingInvestmentSessionResponse =
+  CreateOfferingInvestmentSessionResponses[keyof CreateOfferingInvestmentSessionResponses];
+
+export type ListInvestmentSessionsData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Only sessions on this SPV
+     */
+    spv_id?: string;
+    /**
+     * Only sessions in this state
+     */
+    status?:
+      | "pending"
+      | "in_progress"
+      | "completed"
+      | "abandoned"
+      | "expired"
+      | "canceled";
+    /**
+     * Page size (default 25, max 100)
+     */
+    per_page?: number;
+    /**
+     * Cursor-based pagination token. Use the `next_cursor` value from the previous response's
+     * `meta` object to retrieve the next page of results. Omit this parameter to retrieve the
+     * first page.
+     *
+     */
+    cursor?: number;
+  };
+  url: "/investment_sessions";
+};
+
+export type ListInvestmentSessionsErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * One or more request fields failed validation.
+   */
+  422: ValidationError;
+};
+
+export type ListInvestmentSessionsError =
+  ListInvestmentSessionsErrors[keyof ListInvestmentSessionsErrors];
+
+export type ListInvestmentSessionsResponses = {
+  /**
+   * Successful response
+   */
+  200: InvestmentSessionListEnvelope;
+};
+
+export type ListInvestmentSessionsResponse =
+  ListInvestmentSessionsResponses[keyof ListInvestmentSessionsResponses];
+
+export type CancelInvestmentSessionData = {
+  body?: never;
+  path: {
+    /**
+     * The investment session ID (prefixed, e.g. `is_abc123`)
+     */
+    id: string;
+  };
+  query?: never;
+  url: "/investment_sessions/{id}";
+};
+
+export type CancelInvestmentSessionErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+  /**
+   * One or more request fields failed validation.
+   */
+  422: ValidationError;
+};
+
+export type CancelInvestmentSessionError =
+  CancelInvestmentSessionErrors[keyof CancelInvestmentSessionErrors];
+
+export type CancelInvestmentSessionResponses = {
+  /**
+   * Session canceled (state `canceled` in the response)
+   */
+  200: InvestmentSessionEnvelope;
+};
+
+export type CancelInvestmentSessionResponse =
+  CancelInvestmentSessionResponses[keyof CancelInvestmentSessionResponses];
+
+export type GetInvestmentSessionData = {
+  body?: never;
+  path: {
+    /**
+     * The investment session ID (prefixed, e.g. `is_abc123`)
+     */
+    id: string;
+  };
+  query?: never;
+  url: "/investment_sessions/{id}";
+};
+
+export type GetInvestmentSessionErrors = {
+  /**
+   * Authentication required or token is invalid/expired. This error occurs when:
+   * - No Authorization header is provided
+   * - The access token is invalid or malformed
+   * - The access token has expired
+   * - The access token has been revoked
+   *
+   * To resolve: Obtain a new access token using the OAuth 2.0 flow.
+   *
+   */
+  401: Error;
+  /**
+   * The authenticated user does not have permission to access this resource.
+   * This typically means:
+   * - The user is authenticated but lacks the required OAuth scope
+   * - The resource belongs to a different user
+   * - The user's role doesn't allow this operation
+   *
+   * Check that your OAuth token includes the necessary scopes for this endpoint.
+   *
+   */
+  403: Error;
+  /**
+   * The requested resource does not exist or is not visible to this token.
+   */
+  404: Error;
+};
+
+export type GetInvestmentSessionError =
+  GetInvestmentSessionErrors[keyof GetInvestmentSessionErrors];
+
+export type GetInvestmentSessionResponses = {
+  /**
+   * Successful response
+   */
+  200: InvestmentSessionEnvelope;
+};
+
+export type GetInvestmentSessionResponse =
+  GetInvestmentSessionResponses[keyof GetInvestmentSessionResponses];
