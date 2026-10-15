@@ -108,6 +108,8 @@ const wf = new Wefunder({
 });
 ```
 
+The rotated set is saved before any request uses it. If `store.save` (or `onTokenRefresh`) throws, the SDK throws `WefunderTokenPersistenceError` and keeps the rotated set pending: no request is made with it, the consumed refresh token is never reused, and the next call retries the save. You can also persist `error.tokens` yourself and call `wf.markPersisted(error.tokens)`; `wf.pendingTokens` shows what is waiting. Alert on this error: a process that keeps failing to save cannot reconnect after a restart.
+
 If several application instances can use the same OAuth connection, serialize refreshes for that connection. This prevents two instances from trying to rotate the same refresh token at once.
 
 ## API version
@@ -133,6 +135,8 @@ const portfolio = await wf.portfolio.get();
 Namespaces: `users`, `offerings`, `investments`, `portfolio`, `campaigns`, `syndicates`, `intents`, `installations`, `memberLinks`, `referralCodes`, `joinSessions`, `investmentSessions`, and `webhookEndpoints`.
 
 `wf.offerings.stats(id)` returns an offering's aggregate investment stats. `wf.installations` lets your app act as a company or syndicate: `eligibleTargets()`, `create()`, `mintToken()`, `list()`, `get()`, `revoke()`, and `installOrMintToken()`, which handles the API's 409 `already_installed` answer by minting a token for the existing install with the same scopes.
+
+`wf.memberLinks` mints your app's per-person links to one deal page and reports what each member did (`list`, `all`, `create`, `get`, `cancel`; needs a company- or syndicate-owned token). `wf.referralCodes` (beta) creates codes with your server key and reads per-company stats (`list`, `all`, `get`, `create`, `update`, `stats`). `wf.joinSessions` (beta) mints hosted syndicate join sessions (`list`, `all`, `get`, `create`), and `wf.investmentSessions` (beta) puts a known investor straight into checkout for one offering (`list`, `all`, `listForOffering`, `allForOffering`, `get`, `create`, `cancel`).
 
 `wf.investments` is the Investment Delta API. `list()` without a cursor bootstraps; pass `updated_since` or the `meta.next_cursor` you saved from your last page to receive only records that changed since then. `next_cursor` is always present, even on the final page, so persist it after every sync.
 
@@ -176,7 +180,7 @@ try {
 }
 ```
 
-The SDK retries idempotent `GET` requests after transient network errors, `5xx` responses, and rate limits. Write requests are not retried automatically.
+Retries are bounded (`retry.maxRetries`, default 2) and differ by failure: a `429` is retried for any method after waiting out `X-RateLimit-Reset`; transient network errors and `5xx` responses are retried only for idempotent methods (`GET`, `HEAD`, `OPTIONS`); a `401` is recovered once, for any method, by refreshing or re-minting the token and resending. Size request timeouts with the rate-limit wait in mind, since rate limiting alone can attempt a write up to three times, and the one-time 401 recovery can add one more. `error.remediation` carries the API's suggested fix when it sends one.
 
 ## Webhooks
 
@@ -286,23 +290,14 @@ For endpoints outside the generated surface entirely — preview-tier operations
 failure. It is untyped by design; preview endpoints can change at any time.
 
 ```ts
-// GET with query params
-const spvs = await wf.request("GET", "/partner/spvs", { query: { limit: 10 } });
+// GET with query params (invite links are preview today)
+const links = await wf.request("GET", `/offerings/${offeringId}/invite_links`, { query: { per_page: 10 } });
 
 // POST with a JSON body and an idempotency key
-const session = await wf.request(
-  "POST",
-  `/partner/spvs/${spvId}/investment_sessions`,
-  {
-    body: {
-      investment_session: {
-        email: "alex@example.com",
-        allocation_cents: 500_000,
-      },
-    },
-    headers: { "Idempotency-Key": "invite-alex-1" },
-  },
-);
+const link = await wf.request("POST", `/offerings/${offeringId}/invite_links`, {
+  body: { invite_link: { email: "alex@example.com", allocation_cents: 500_000 } },
+  headers: { "Idempotency-Key": "invite-alex-1" },
+});
 ```
 
 The returned body is passed through as-is (no `{ data }` unwrapping — envelope
@@ -346,11 +341,11 @@ Commit the specification and generated client together.
 
 ### Releasing
 
-Releases are published by GitHub Actions. From a clean `main` branch:
+Releases are published by GitHub Actions when a `v*` tag is pushed. From a clean `main` branch:
 
 ```bash
-npm version prerelease --preid beta
-git push --follow-tags
+npm version minor                 # or patch / major; bumps package.json, rebuilds the examples manifest, commits, and tags
+git push --follow-tags            # npm's tag is annotated, so --follow-tags pushes it
 ```
 
-The release workflow runs the package checks and publishes prereleases to npm's `beta` tag.
+A stable version publishes to npm's `latest` tag. For a prerelease, `npm version prerelease --preid beta` instead; it publishes to the `beta` tag and `latest` stays put. The release workflow refuses a tag that does not match `package.json`.
